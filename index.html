@@ -344,6 +344,7 @@ function loadAll(){
     nnApproved:"wiki/core-rules/NN-APPROVED.md",
     register:"wiki/core-rules/REGISTER.md",
     decisions:".github/board/decisions.json",
+    routing:"prompts/ROUTING.json",
     vgTiers:"raw/mcp-db/service-simplified/vg_tiers.jsonl",
     vgCheckpoints:"raw/mcp-db/service-simplified/vg_checkpoints.jsonl"
   };
@@ -355,7 +356,7 @@ function loadAll(){
     rs.forEach(function(r){
       if (!r.f) return;
       try{
-        if (r.k==="cfg"||r.k==="theme"||r.k==="statuses"||r.k==="models"||r.k==="decisions")
+        if (r.k==="cfg"||r.k==="theme"||r.k==="statuses"||r.k==="models"||r.k==="decisions"||r.k==="routing")
           S[r.k]=JSON.parse(r.f.text);
         else if (r.k==="draft"){ S.draft=parseDraft(r.f.text); S.parseNotes.push.apply(S.parseNotes,S.draft.notes); }
         else if (r.k==="approved") S.approved=parseApproved(r.f.text);
@@ -466,7 +467,8 @@ function route(){
   if ((m=h.match(/^#\/registers(?:\/(wp|vg))?(?:\?q=(.*))?$/)))
     return vRegisters(m[1]||"nn", m[2]?decodeURIComponent(m[2]):"");
   if (h==="#/queue") return vStub("Task Queue","Arrives at milestone M4 — priority numbers, drag-drop reorder, RETURN-TO, the 10 locked colours.");
-  if (h==="#/studio") return vStub("Prompt Studio","Arrives at milestone M2 — nature of task → specialists → consolidation → one closing model, side by side.");
+  if (h==="#/studio") return vStudio();
+  if ((m=h.match(/^#\/studio\/run\/(.+)$/))) return vResults(decodeURIComponent(m[1]));
   if (h==="#/settings") return vSettings();
   vHome();
 }
@@ -669,6 +671,229 @@ function regTable(which,q){
 function vStub(title,body){
   setCrumb(title);
   render('<div class="card"><h2>'+esc(title)+'</h2><div class="empty">'+esc(body)+'</div></div>');
+}
+
+/* ================= prompt studio (M2) ================= */
+function putFile(path, content, message){
+  // EVERY write passes the guards. The Contents API bypasses the repo's pre-commit
+  // hooks, so the same protections run here, before anything leaves this device.
+  var why = guardWrite(content);
+  if (why) return Promise.reject(new Error("Write refused: the content contains " + why + ". Nothing was sent."));
+  var r = S.repo;
+  var bytes = new TextEncoder().encode(content), bin = "";
+  for (var i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return gh("/repos/"+r.owner+"/"+r.repo+"/contents/"+encodeURI(path), {
+    method: "PUT",
+    body: { message: message, content: btoa(bin), branch: r.branch }
+  });
+}
+function listDir(path){
+  var r = S.repo;
+  return gh("/repos/"+r.owner+"/"+r.repo+"/contents/"+encodeURI(path)+"?ref="+encodeURIComponent(r.branch));
+}
+function mdBlocks(text){
+  // Small block renderer for model answers: headings, tables, code fences, paragraphs.
+  var out = [], lines = text.split("\n"), i = 0;
+  while (i < lines.length){
+    var L = lines[i];
+    if (/^```/.test(L)){
+      var code = [];
+      i++;
+      while (i < lines.length && !/^```/.test(lines[i])) code.push(lines[i++]);
+      i++;
+      out.push("<pre style='overflow-x:auto;background:var(--bg);padding:10px;border-radius:8px;font-size:12px'>"+esc(code.join("\n"))+"</pre>");
+      continue;
+    }
+    if (/^\|/.test(L)){
+      var rows = [];
+      while (i < lines.length && /^\|/.test(lines[i])){
+        if (!/^\|[-\s|:]+\|$/.test(lines[i]))
+          rows.push(lines[i].split("|").slice(1,-1).map(function(c){return md(c.trim());}));
+        i++;
+      }
+      var t = "<div class='tablewrap'><table>";
+      rows.forEach(function(cs, ri){
+        t += "<tr>" + cs.map(function(c){ return (ri===0?"<th>":"<td>") + c + (ri===0?"</th>":"</td>"); }).join("") + "</tr>";
+      });
+      out.push(t + "</table></div>");
+      continue;
+    }
+    var mh = L.match(/^(#{1,4})\s+(.*)$/);
+    if (mh){ out.push("<h3>"+md(mh[2])+"</h3>"); i++; continue; }
+    if (/^\s*$/.test(L)){ i++; continue; }
+    var para = [];
+    while (i < lines.length && !/^\s*$/.test(lines[i]) && !/^(#{1,4}\s|\||```)/.test(lines[i])) para.push(lines[i++]);
+    out.push("<p style='font-size:13.5px'>"+md(para.join(" "))+"</p>");
+  }
+  return out.join("");
+}
+var STUDIO = { running:null };  // {id, dispatchedAt, mode, detail}
+function vStudio(){
+  setCrumb("Prompt Studio");
+  var roles = {};
+  try { roles = S.routing ? S.routing.roles : {}; } catch(e){}
+  var roleOpts = Object.keys(roles).map(function(k){
+    return '<option value="'+esc(k)+'">'+esc(k)+' — '+esc((roles[k].models||[]).join(", "))+'</option>';
+  }).join("");
+  var finals = (S.models && S.models.finals || []).map(function(f){
+    return '<option value="'+esc(f)+'">'+esc(f)+'</option>';
+  }).join("");
+  var h = '<div class="card"><h2>Ask the models</h2>'+
+    '<p class="small">Your prompt is filed in the repository, every model is fed the SSOT first, and every '+
+    'answer lands in <code>raw/model-runs/</code> with the prompt’s SHA-256 — traceable forever. '+
+    'Answers are never merged; disagreement is carried, not smoothed.</p>'+
+    '<label>Title (becomes the prompt id)</label><input id="st-title" placeholder="e.g. Challenge the EWS free-access wording">'+
+    '<label>The prompt</label><textarea id="st-body" rows="7" placeholder="Ask exactly what you want ruled, challenged or researched…"></textarea>'+
+    '<label>Mode</label>'+
+    '<div class="row">'+
+    '<button id="st-mode-fan" class="primary" onclick="stMode(\'fan\')">Fan-out — all specialists answer</button>'+
+    '<button id="st-mode-cas" onclick="stMode(\'cas\')">Cascade — specialists → consolidate → one closes</button></div>'+
+    '<div id="st-fan"><label>Nature of task</label><select id="st-role">'+roleOpts+'</select></div>'+
+    '<div id="st-cas" style="display:none">'+
+    '<label>Stages, in order (comma-separated natures)</label><input id="st-stages" value="reasoning">'+
+    '<label>The ONE model that closes it</label><select id="st-final">'+finals+'</select></div>'+
+    '<p></p><button class="primary" onclick="stDispatch()" id="st-go">Send to the models</button>'+
+    '<div id="st-status"></div></div>';
+  h += '<div class="card"><h2>Past runs</h2><div id="st-runs"><span class="spin"></span></div></div>';
+  render(h);
+  loadRuns();
+}
+function stMode(m){
+  document.getElementById("st-fan").style.display = m==="fan"?"":"none";
+  document.getElementById("st-cas").style.display = m==="cas"?"":"none";
+  document.getElementById("st-mode-fan").className = m==="fan"?"primary":"";
+  document.getElementById("st-mode-cas").className = m==="cas"?"primary":"";
+  STUDIO.mode = m;
+}
+function stDispatch(){
+  var title=(document.getElementById("st-title").value||"").trim();
+  var body=(document.getElementById("st-body").value||"").trim();
+  if(!title||!body) return toast("Give it a title and the prompt itself");
+  var slug=title.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,"").slice(0,40);
+  var d=new Date(), ymd=d.toISOString().slice(0,10).replace(/-/g,"");
+  var id="console-"+ymd+"-"+slug;
+  var mode=STUDIO.mode||"fan";
+  var status=document.getElementById("st-status");
+  var btn=document.getElementById("st-go"); btn.disabled=true;
+  status.innerHTML='<p class="small"><span class="spin"></span> Filing the prompt…</p>';
+  var content="# "+title+"\n\n"+body+"\n\n*Composed in the Nanbi Console, "+ist()+".*\n";
+  putFile("prompts/"+id+".md", content, "Prompt from the console: "+id)
+  .then(function(){
+    status.innerHTML='<p class="small"><span class="spin"></span> Prompt filed. Dispatching the models…</p>';
+    var inputs={ prompt:id, compare:"yes" };
+    if (mode==="cas"){
+      inputs.stages=(document.getElementById("st-stages").value||"reasoning").trim();
+      inputs["final"]=document.getElementById("st-final").value||"";
+      inputs.models="";
+    } else {
+      inputs.role=document.getElementById("st-role").value||"reasoning";
+      inputs.models="";
+    }
+    var r=S.repo;
+    STUDIO.running={ id:id, dispatchedAt:Date.now(), mode:mode };
+    return gh("/repos/"+r.owner+"/"+r.repo+"/actions/workflows/fanout.yml/dispatches",
+      { method:"POST", body:{ ref:r.branch, inputs:inputs } });
+  })
+  .then(function(){ pollRun(status, 0); })
+  .catch(function(e){
+    btn.disabled=false;
+    status.innerHTML='<div class="err">'+esc(e.message)+'</div>';
+  });
+}
+function pollRun(status, tries){
+  var r=S.repo, run=STUDIO.running;
+  if(!run) return;
+  var poll=(S.cfg&&S.cfg.pollSeconds||15)*1000;
+  gh("/repos/"+r.owner+"/"+r.repo+"/actions/workflows/fanout.yml/runs?branch="+
+     encodeURIComponent(r.branch)+"&per_page=5")
+  .then(function(j){
+    var mine=(j.workflow_runs||[]).find(function(w){
+      return new Date(w.created_at).getTime() >= run.dispatchedAt - 60000;
+    });
+    var mins=Math.round((Date.now()-run.dispatchedAt)/6000)/10;
+    if(!mine){
+      status.innerHTML='<p class="small"><span class="spin"></span> Waiting for the run to appear… '+mins+' min</p>';
+    } else if (mine.status!=="completed"){
+      status.innerHTML='<p class="small"><span class="spin"></span> Models are answering — '+esc(mine.status)+
+        ' · '+mins+' min elapsed (typically 1–3 min). You can leave this screen; the answers land in the repository either way.</p>';
+    } else if (mine.conclusion==="success"){
+      status.innerHTML='<p class="small">✅ Done in '+mins+' min. Opening the answers…</p>';
+      var btn=document.getElementById("st-go"); if(btn) btn.disabled=false;
+      location.hash="#/studio/run/"+encodeURIComponent(run.id);
+      return;
+    } else {
+      status.innerHTML='<div class="err">The run finished with: '+esc(mine.conclusion)+
+        '. <a href="'+esc(mine.html_url)+'" target="_blank" rel="noopener">Open the run log</a> — '+
+        'a provider with no key configured reports NOT CONFIGURED and the others still answer.</div>'+
+        '<p class="small"><a href="#/studio/run/'+encodeURIComponent(run.id)+'">Check for partial answers →</a></p>';
+      var b2=document.getElementById("st-go"); if(b2) b2.disabled=false;
+      return;
+    }
+    if (tries<80) setTimeout(function(){ pollRun(status,tries+1); }, poll);
+    else status.innerHTML='<div class="err">Stopped watching after 20 minutes — check the Actions page for the run.</div>';
+  })
+  .catch(function(e){ status.innerHTML='<div class="err">'+esc(e.message)+'</div>'; });
+}
+function vResults(id){
+  setCrumb("Answers");
+  render('<div class="card"><h2>'+esc(id)+'</h2><div id="res"><span class="spin"></span> Fetching the answers…</div></div>');
+  var box=document.getElementById("res");
+  var dates=[0,1].map(function(off){ var d=new Date(Date.now()-off*86400000); return d.toISOString().slice(0,10); });
+  var tryDate=function(di){
+    if(di>=dates.length){
+      box.innerHTML='<div class="empty">No answers filed yet for this prompt. If the run just finished, '+
+        'give it a few seconds and <a href="#/studio/run/'+encodeURIComponent(id)+'">reload</a>.</div>';
+      return;
+    }
+    var day=dates[di];
+    // fan-out files sit flat: <id>__<provider>.md · cascade files sit in a directory <id>/
+    listDir("raw/model-runs/"+day).then(function(items){
+      var flat=(items||[]).filter(function(f){ return f.type==="file" && f.name.indexOf(id+"__")===0; });
+      var dir=(items||[]).find(function(f){ return f.type==="dir" && f.name===id; });
+      if (dir) return listDir("raw/model-runs/"+day+"/"+id).then(function(fs){ showAnswers(day+"/"+id, fs, box, true); });
+      if (flat.length) return showAnswers(day, flat, box, false);
+      tryDate(di+1);
+    }, function(){ tryDate(di+1); });
+  };
+  tryDate(0);
+}
+function showAnswers(base, files, box, isCascade){
+  files=(files||[]).filter(function(f){ return f.type==="file" && /\.md$/.test(f.name); });
+  // COMPARE and TRACE last, FINAL first for cascade
+  files.sort(function(a,b){
+    var w=function(n){ return n.indexOf("FINAL")===0?0 : /COMPARE|TRACE/.test(n)?2 : 1; };
+    return w(a.name)-w(b.name) || a.name.localeCompare(b.name);
+  });
+  if(!files.length){ box.innerHTML='<div class="empty">The run directory exists but holds no answers yet.</div>'; return; }
+  box.innerHTML='<p class="small">'+files.length+' file(s) · answers are shown verbatim and never merged.</p>';
+  files.forEach(function(f){
+    var card=document.createElement("div"); card.className="card";
+    card.innerHTML='<h2 style="font-size:14px">'+esc(f.name.replace(/\.md$/,""))+'</h2><p class="small"><span class="spin"></span></p>';
+    box.appendChild(card);
+    readFile("raw/model-runs/"+base+"/"+f.name).then(function(file){
+      card.innerHTML='<h2 style="font-size:14px">'+esc(f.name.replace(/\.md$/,""))+'</h2>'+mdBlocks(file.text);
+    }, function(e){ card.innerHTML+='<div class="err">'+esc(e.message)+'</div>'; });
+  });
+}
+function loadRuns(){
+  var el=document.getElementById("st-runs"); if(!el) return;
+  readFile("manifests/MODEL-RUNS.md").then(function(f){
+    var rows=[];
+    f.text.split("\n").forEach(function(L){
+      var cs=L.split("|").slice(1,-1).map(function(c){return c.trim();});
+      if(cs.length>=5 && /^\d{4}-\d{2}-\d{2}$/.test(cs[0]))
+        rows.push({date:cs[0], id:cs[1].replace(/`/g,""), models:cs[3], answered:cs[4]});
+    });
+    rows.reverse();
+    if(!rows.length){ el.innerHTML='<div class="empty">No runs yet. The first one you send appears here.</div>'; return; }
+    var h='<div class="tablewrap"><table><tr><th>Date</th><th>Prompt</th><th>Models</th><th>Answered</th></tr>';
+    rows.slice(0,20).forEach(function(r){
+      h+='<tr class="click" onclick="location.hash=\'#/studio/run/'+encodeURIComponent(r.id)+'\'">'+
+        '<td class="small">'+esc(r.date)+'</td><td><b>'+esc(r.id)+'</b></td>'+
+        '<td class="small">'+esc(r.models)+'</td><td class="small">'+esc(r.answered)+'</td></tr>';
+    });
+    el.innerHTML=h+'</table></div>';
+  }, function(){ el.innerHTML='<div class="empty">No runs manifest yet — it appears with the first run.</div>'; });
 }
 
 function vSettings(){
