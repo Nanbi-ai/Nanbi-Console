@@ -345,6 +345,7 @@ function loadAll(){
     register:"wiki/core-rules/REGISTER.md",
     decisions:".github/board/decisions.json",
     routing:"prompts/ROUTING.json",
+    split:"webapp/config/split.json",
     vgTiers:"raw/mcp-db/service-simplified/vg_tiers.jsonl",
     vgCheckpoints:"raw/mcp-db/service-simplified/vg_checkpoints.jsonl"
   };
@@ -356,7 +357,7 @@ function loadAll(){
     rs.forEach(function(r){
       if (!r.f) return;
       try{
-        if (r.k==="cfg"||r.k==="theme"||r.k==="statuses"||r.k==="models"||r.k==="decisions"||r.k==="routing")
+        if (r.k==="cfg"||r.k==="theme"||r.k==="statuses"||r.k==="models"||r.k==="decisions"||r.k==="routing"||r.k==="split")
           S[r.k]=JSON.parse(r.f.text);
         else if (r.k==="draft"){ S.draft=parseDraft(r.f.text); S.parseNotes.push.apply(S.parseNotes,S.draft.notes); }
         else if (r.k==="approved") S.approved=parseApproved(r.f.text);
@@ -595,6 +596,12 @@ function vRegisters(which,q){
     '<button class="'+(which==="wp"?"primary":"")+'" onclick="location.hash=\'#/registers/wp\'">Working protocols ('+S.register.wp.length+')</button>'+
     '<button class="'+(which==="vg"?"primary":"")+'" onclick="location.hash=\'#/registers/vg\'">Validation Gateway ('+vgN+')</button></div>'+
     '<label>Filter</label><input id="regq" placeholder="Type to filter…" value="'+esc(q)+'" oninput="regFilter()">'+
+    (which==="nn" && S.split ?
+      '<blockquote class="q-founder"><b>The 7 July re-sort — PROPOSED, awaiting your item-by-item ruling.</b> '+
+      'Your structural split resolves these '+S.register.nn.length+' into <b>~32 true NNs</b>; the rest move to '+
+      'Working Protocols (12), Closed Decisions (11), Policies (2), Retired (5), Constitution (4). Per your own '+
+      'NN-G-01, nothing moves until you rule each one — the <b>Proposed home</b> column shows where each row '+
+      'would go. Ruling this split is also what settles the denominator.</blockquote>' : '')+
     '<p class="small">Policies &amp; SOPs: <b>no reconciled register exists in the record yet</b> — they were '+
     'never counted (SSOT §7). Listing them here before the excavation docket runs would be inventing data, '+
     'so the gap is stated instead of papered over.</p></div>'+
@@ -623,12 +630,22 @@ function sheetCites(code){
 function regTable(which,q){
   var rows, h;
   if (which==="nn"){
+    var HOME_LABEL={nn:'<span class="pill badge-LOCKED">TRUE NN</span>',
+      wp:'<span class="pill" style="background:rgba(59,130,246,.15);color:#1D4ED8">→ Working Protocol</span>',
+      decision:'<span class="pill" style="background:rgba(107,120,148,.15);color:#6B7894">→ Closed Decision</span>',
+      policy:'<span class="pill" style="background:rgba(139,92,246,.15);color:#6D28D9">→ Policy</span>',
+      retired:'<span class="pill" style="background:rgba(239,68,68,.12);color:#B91C1C">→ Retired</span>',
+      constitution:'<span class="pill" style="background:rgba(27,122,138,.15);color:var(--teal)">→ Constitution</span>'};
     rows=S.register.nn.filter(function(r){ return !q || (r.code+" "+r.rule+" "+r.says).toLowerCase().indexOf(q)!==-1; });
-    h='<table><tr><th>Code</th><th>Rule</th><th>What it says</th><th>Cited by</th><th>Arch</th></tr>';
+    var homes=(S.split&&S.split.homes)||{};
+    h='<table><tr><th>Code</th><th>Rule</th><th>What it says</th><th>Proposed home</th><th>Cited by</th></tr>';
     rows.forEach(function(r){
+      var sp=homes[r.code];
       h+='<tr><td><b>'+esc(r.code)+'</b>'+(r.collision?' <span class="pill" style="background:rgba(245,158,11,.15);color:#B45309">⚠ ID collision</span>':"")+
         '</td><td>'+esc(r.rule)+'</td>'+
-        '<td class="small">'+esc(r.says)+'</td><td>'+citedBy(r.code)+'</td><td class="small">'+esc(r.arch)+'</td></tr>';
+        '<td class="small">'+esc(r.says)+'</td>'+
+        '<td>'+(sp?(HOME_LABEL[sp.home]||esc(sp.home))+(sp.newId?'<div class="small">'+esc(sp.newId)+'</div>':""):'<span class="small">not in the split</span>')+'</td>'+
+        '<td>'+citedBy(r.code)+'</td></tr>';
     });
   } else if (which==="wp"){
     rows=S.register.wp.filter(function(r){ return !q || (r.code+" "+r.rule).toLowerCase().indexOf(q)!==-1; });
