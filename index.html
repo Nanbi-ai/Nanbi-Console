@@ -168,7 +168,15 @@ function gh(path, opts){
   }).then(function(r){
     var rem = r.headers.get("x-ratelimit-remaining");
     if (rem !== null) S.rate = rem;
-    if (r.status === 401){ authScreen("Your token was rejected (401). Enter it again."); throw new Error("401"); }
+    if (r.status === 401){ authScreen("GitHub rejected the token string itself (401) — a mangled paste, "+
+      "or the token expired or was revoked. Re-copy the exact token and paste it once. "+
+      "(Permissions are NOT the problem — a permissions issue would be a 403 or 404.)"); throw new Error("401"); }
+    if ((r.status === 403 || r.status === 404) && path.indexOf("/repos/") === 0 && !S.loaded){
+      authScreen("Your token is valid, but it cannot reach "+S.repo.owner+"/"+S.repo.repo+" ("+r.status+"). "+
+        "Open the token on GitHub and check: Resource owner = "+S.repo.owner+", and under "+
+        "“Only select repositories” the repository "+S.repo.repo+" is selected, with "+
+        "Contents and Actions both Read-and-write."); throw new Error(String(r.status));
+    }
     if (!r.ok) return r.text().then(function(t){ throw new Error("HTTP " + r.status + " on " + path + " — " + t.slice(0,180)); });
     return r.status === 204 ? null : r.json();
   });
@@ -423,8 +431,16 @@ function authScreen(msg){
   '<p></p><button class="primary" onclick="doAuth()">Connect</button></div>');
 }
 function doAuth(){
-  var pat=document.getElementById("f-pat").value.trim();
+  // Strip ALL whitespace, not just the ends — a paste from a notes app often carries
+  // line breaks or a double-paste, and GitHub answers 401 to the mangled string.
+  var pat=document.getElementById("f-pat").value.replace(/\s+/g,"");
   if(!pat) return toast("Paste the token first");
+  if(!/^(github_pat_|ghp_)/.test(pat))
+    return authScreen("That does not look like a GitHub token — it should start with github_pat_ "+
+      "(fine-grained) or ghp_. Re-copy it from GitHub and paste only the token.");
+  if(pat.length>255)
+    return authScreen("The pasted text is "+pat.length+" characters — a token is under 100. "+
+      "It looks like a double-paste. Clear the field and paste once.");
   S.pat=pat;
   S.repo={ owner:document.getElementById("f-owner").value.trim(),
            repo:document.getElementById("f-repo").value.trim(),
