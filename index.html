@@ -1,0 +1,686 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Nanbi Console</title>
+<!--
+  NANBI CONSOLE — generic shell. Contains NO project data and NO secrets.
+  Everything it shows is fetched at runtime from a private GitHub repository
+  after the owner signs in with their own fine-grained token (kept in
+  localStorage on this device only; never transmitted anywhere except
+  api.github.com; never included in any file this app writes).
+-->
+<style>
+:root{
+  --navy:#1A3C6E; --teal:#1B7A8A; --bg:#F0F4F8; --card:#FFFFFF;
+  --text:#1A1A2E; --muted:#6B7894; --border:#E2E8F0;
+  --ok:#22C55E; --warn:#F59E0B; --danger:#EF4444; --info:#3B82F6;
+  --radius:12px; --grid:8px; --stripe:4px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--bg);color:var(--text);
+  font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+  font-size:15px;line-height:1.45;padding-bottom:64px}
+a{color:var(--teal)}
+header.app{position:sticky;top:0;z-index:30;background:var(--navy);color:#fff;
+  padding:12px 16px;display:flex;align-items:center;gap:10px}
+header.app h1{font-size:17px;margin:0;font-weight:600;letter-spacing:.01em}
+header.app .crumb{opacity:.75;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+header.app .spacer{flex:1}
+header.app .conn{font-size:11px;padding:3px 8px;border-radius:999px;background:rgba(255,255,255,.15)}
+main{max-width:980px;margin:0 auto;padding:16px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
+  padding:16px;margin-bottom:12px}
+.card h2{margin:0 0 8px;font-size:16px;color:var(--navy)}
+.card h3{margin:16px 0 6px;font-size:14px;color:var(--navy)}
+.small{font-size:12.5px;color:var(--muted)}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+button,.btn{font:inherit;border:1px solid var(--border);background:#fff;color:var(--navy);
+  border-radius:8px;padding:8px 14px;cursor:pointer}
+button.primary{background:var(--teal);border-color:var(--teal);color:#fff}
+button.quiet{border:none;background:none;color:var(--teal);padding:4px 6px}
+button:disabled{opacity:.45;cursor:not-allowed}
+input,select,textarea{font:inherit;border:1px solid var(--border);border-radius:8px;
+  padding:9px 12px;width:100%;background:#fff;color:var(--text)}
+label{display:block;font-size:12.5px;color:var(--muted);margin:10px 0 4px}
+.pill{display:inline-block;font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:999px;white-space:nowrap}
+.badge-R{background:rgba(107,120,148,.15);color:#6B7894}
+.badge-I{background:rgba(245,158,11,.15);color:#B45309}
+.badge-P{background:rgba(239,68,68,.12);color:#B91C1C;border:1.5px solid #EF4444}
+.badge-LOCKED{background:rgba(34,197,94,.15);color:#15803D}
+.progress{height:8px;background:var(--bg);border-radius:4px;overflow:hidden;margin:6px 0 2px}
+.progress i{display:block;height:100%;background:var(--teal)}
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);
+  padding:6px 8px;border-bottom:1px solid var(--border);white-space:nowrap}
+td{padding:8px;border-bottom:1px solid var(--border);vertical-align:top}
+tr.click{cursor:pointer}
+tr.click:hover{background:rgba(27,122,138,.05)}
+.tablewrap{overflow-x:auto;margin:0 -16px;padding:0 16px}
+.topicgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+.topiccard{border:1px solid var(--border);border-radius:8px;padding:10px;cursor:pointer;background:#fff}
+.topiccard:hover{border-color:var(--teal)}
+.topiccard b{color:var(--navy);font-size:13.5px;display:block;margin-bottom:2px}
+.elem{border:1px solid var(--border);border-left:var(--stripe) solid var(--border);
+  border-radius:8px;padding:12px;margin-bottom:8px;cursor:pointer;background:#fff}
+.elem.basis-P{border-left-color:var(--danger)}
+.elem.basis-I{border-left-color:var(--warn)}
+.elem.basis-R{border-left-color:var(--muted)}
+.elem.ruled{border-left-color:var(--ok)}
+.elem b{color:var(--navy)}
+.elem .content{margin:4px 0;font-size:13.5px}
+.sheet-back{position:fixed;inset:0;background:rgba(26,28,46,.45);z-index:40;display:flex;align-items:flex-end;justify-content:center}
+.sheet{background:#fff;border-radius:16px 16px 0 0;max-height:88vh;overflow-y:auto;
+  width:100%;max-width:720px;padding:20px 18px 28px}
+.sheet h2{margin-top:0;color:var(--navy);font-size:17px}
+blockquote{border-left:3px solid var(--teal);margin:8px 0;padding:4px 12px;color:var(--text);
+  background:rgba(27,122,138,.05);border-radius:0 8px 8px 0;font-size:13.5px}
+.q-founder{border-left-color:var(--danger);background:rgba(239,68,68,.05)}
+nav.bottom{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid var(--border);
+  display:flex;z-index:30;padding-bottom:env(safe-area-inset-bottom)}
+nav.bottom a{flex:1;text-align:center;padding:9px 2px 7px;font-size:10.5px;color:var(--muted);
+  text-decoration:none;display:flex;flex-direction:column;gap:1px}
+nav.bottom a .ic{font-size:18px;line-height:1}
+nav.bottom a.active{color:var(--teal);font-weight:600}
+.toast{position:fixed;bottom:76px;left:50%;transform:translateX(-50%);background:var(--navy);
+  color:#fff;padding:10px 18px;border-radius:999px;font-size:13.5px;z-index:60;max-width:90vw}
+.err{background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.3);border-radius:8px;
+  padding:10px 12px;font-size:13.5px;color:#991B1B;margin:8px 0}
+.empty{border:2px dashed var(--border);border-radius:var(--radius);padding:28px 16px;
+  text-align:center;color:var(--muted);font-size:13.5px;margin:8px 0}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px}
+.kpi{border:1px solid var(--border);border-radius:8px;padding:10px 12px;background:#fff}
+.kpi .n{font-size:22px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums}
+.kpi .k{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.spin{display:inline-block;width:16px;height:16px;border:2px solid var(--border);
+  border-top-color:var(--teal);border-radius:50%;animation:sp 0.8s linear infinite;vertical-align:-3px}
+@keyframes sp{to{transform:rotate(360deg)}}
+footer.diag{max-width:980px;margin:20px auto 8px;padding:0 16px;font-size:11.5px;color:var(--muted)}
+@media(min-width:768px){
+  body{padding-bottom:0;padding-left:200px}
+  nav.bottom{left:0;right:auto;top:0;bottom:0;width:200px;flex-direction:column;
+    border-top:none;border-right:1px solid var(--border);padding-top:60px;justify-content:flex-start}
+  nav.bottom a{flex:0 0 auto;flex-direction:row;gap:10px;align-items:center;
+    padding:12px 18px;font-size:14px;text-align:left}
+  header.app{padding-left:216px}
+}
+@media(prefers-reduced-motion:reduce){.spin{animation:none}}
+</style>
+</head>
+<body>
+<header class="app">
+  <h1>Nanbi</h1><span class="crumb" id="crumb"></span>
+  <span class="spacer"></span><span class="conn" id="conn">offline</span>
+</header>
+<nav class="bottom" id="nav" hidden>
+  <a href="#/"><span class="ic">◉</span>Home</a>
+  <a href="#/ratify"><span class="ic">⚖</span>Ratify</a>
+  <a href="#/registers"><span class="ic">§</span>Registers</a>
+  <a href="#/queue"><span class="ic">≡</span>Queue</a>
+  <a href="#/studio"><span class="ic">✦</span>Studio</a>
+  <a href="#/settings"><span class="ic">⚙</span>Settings</a>
+</nav>
+<main id="main"><div class="card"><span class="spin"></span> Starting…</div></main>
+<footer class="diag" id="diag"></footer>
+
+<script>
+"use strict";
+/* ================= state ================= */
+var S = {
+  pat: localStorage.getItem("nanbi.pat") || "",
+  repo: JSON.parse(localStorage.getItem("nanbi.repo") || "null") ||
+        { owner:"Nanbi-ai", repo:"Nanbi-SSOT", branch:"claude/nanbi-ssot-wiki-structure-grll1f" },
+  cfg:null, theme:null, statuses:null, models:null,
+  draft:null, approved:null, nnApproved:null, register:null, decisions:null,
+  parseNotes:[], loaded:false, rate:null
+};
+
+/* ================= guards (G2/G3 + PAT refusal) =================
+   The Contents API bypasses the repository's pre-commit hooks, so the same
+   protections run here on EVERY outbound write body. No write path may skip this. */
+var CRED_RE = new RegExp([
+  "sk-ant-[A-Za-z0-9_-]{20,}","sk-[A-Za-z0-9]{40,}","AKIA[0-9A-Z]{16}",
+  "ghp_[A-Za-z0-9]{36,}","github_pat_[A-Za-z0-9_]{50,}","GOCSPX-[A-Za-z0-9_-]{20,}",
+  "ya29\\.[A-Za-z0-9_-]{20,}","\\b1//0[A-Za-z0-9_-]{40,}",
+  "-----BEGIN [A-Z ]*PRIVATE KEY","(postgres|postgresql|neo4j\\+s)://[^\\s/]+:[^\\s@]+@"
+].join("|"));
+function guardWrite(text){
+  if (S.pat && text.indexOf(S.pat) !== -1) return "the sign-in token itself";
+  if (CRED_RE.test(text)) return "a credential-shaped string";
+  // piiBlockB64 is base64 in config so the blocked string itself never appears in a tracked file
+  if (S.cfg && S.cfg.piiBlockB64 && text.indexOf(atob(S.cfg.piiBlockB64)) !== -1) return "blocked personal data";
+  return null;
+}
+
+/* ================= github api ================= */
+function gh(path, opts){
+  opts = opts || {};
+  return fetch("https://api.github.com" + path, {
+    method: opts.method || "GET",
+    headers: Object.assign({
+      "Authorization":"Bearer " + S.pat,
+      "Accept":"application/vnd.github+json",
+      "X-GitHub-Api-Version":"2022-11-28"
+    }, opts.headers || {}),
+    body: opts.body ? JSON.stringify(opts.body) : undefined
+  }).then(function(r){
+    var rem = r.headers.get("x-ratelimit-remaining");
+    if (rem !== null) S.rate = rem;
+    if (r.status === 401){ authScreen("Your token was rejected (401). Enter it again."); throw new Error("401"); }
+    if (!r.ok) return r.text().then(function(t){ throw new Error("HTTP " + r.status + " on " + path + " — " + t.slice(0,180)); });
+    return r.status === 204 ? null : r.json();
+  });
+}
+function b64utf8(b64){
+  var bin = atob(b64.replace(/\n/g,""));
+  var bytes = new Uint8Array(bin.length);
+  for (var i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
+  return new TextDecoder("utf-8").decode(bytes);
+}
+function readFile(path){
+  var r = S.repo;
+  return gh("/repos/"+r.owner+"/"+r.repo+"/contents/"+encodeURI(path)+"?ref="+encodeURIComponent(r.branch))
+    .then(function(j){ return { text: b64utf8(j.content), sha: j.sha }; });
+}
+
+/* ================= time (IST always) ================= */
+function ist(d){
+  d = d ? new Date(d) : new Date();
+  return new Intl.DateTimeFormat("en-IN",{timeZone:"Asia/Kolkata",
+    day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit",hour12:false
+  }).format(d) + " IST";
+}
+function daysOpen(iso){
+  var ms = Date.now() - new Date(iso + "T00:00:00+05:30").getTime();
+  return Math.max(0, Math.floor(ms/86400000));
+}
+
+/* ================= parsers (ports of the repo's proven board.py logic) ================= */
+function parseDraft(md){
+  // # CATEGORY A — NAME  →  ## A1 · TOPIC  →  | n | **Name** | content | anchors | basis |
+  var cats=[], cat=null, topic=null, notes=[];
+  var lines = md.split("\n");
+  for (var i=0;i<lines.length;i++){
+    var L=lines[i];
+    var mc=L.match(/^# CATEGORY ([A-F]) — (.+)$/);
+    if (mc){ cat={ id:mc[1], name:mc[2].trim(), topics:[] }; cats.push(cat); topic=null; continue; }
+    var mt=L.match(/^## ([A-F]\d{1,2}) · (.+)$/);
+    if (mt && cat){ topic={ id:mt[1], name:mt[2].trim(), elements:[], question:null, blurb:"" }; cat.topics.push(topic); continue; }
+    if (topic){
+      var mq=L.match(/^> \*\*Founder question[^:]*:\*\*\s*(.*)$/);
+      if (mq){ topic.question=(mq[1]||"").trim();
+        while (i+1<lines.length && /^> ?/.test(lines[i+1]) && !/^\s*$/.test(lines[i+1]))
+          topic.question += " " + lines[++i].replace(/^> ?/,"").trim();
+        continue; }
+      var mw=L.match(/^\*What this answers: (.+)\*$/);
+      if (mw){ topic.blurb=mw[1]; continue; }
+      // Element rows come in two shapes: the standard 5-column
+      // | n | **Name** | content | anchors | basis |  and E27's 4-column trade-off table
+      // | n | **Name** | content | basis |  (no Anchor column). Both are the record's own
+      // formats, so both parse — board.py counts rows the same way.
+      var me=L.match(/^\|\s*(\d+)\s*\|\s*\*\*(.+?)\*\*\s*\|(.+)\|(.+)\|(.+)\|\s*$/) ||
+             L.match(/^\|\s*(\d+)\s*\|\s*\*\*(.+?)\*\*\s*\|(.+)\|(.+)\|\s*$/);
+      if (me){
+        var five = me.length === 6;
+        var basisCell=(five?me[5]:me[4]).trim();
+        var mb=basisCell.match(/\*\*([RIP])\b/);
+        topic.elements.push({
+          no:+me[1], name:me[2].trim(), content:me[3].trim(),
+          anchors:five?me[4].trim():"—", basis:mb?mb[1]:"?", basisNote:basisCell,
+          locked:/LOCKED/.test(basisCell), key:topic.id+"/"+me[1]
+        });
+        continue;
+      }
+      if (/^\|\s*\d+\s*\|/.test(L)) notes.push("draft line "+(i+1)+": element row did not parse");
+    }
+  }
+  var total=0; cats.forEach(function(c){c.topics.forEach(function(t){ total+=t.elements.length; });});
+  return { cats:cats, total:total, notes:notes };
+}
+function parseApproved(md){
+  // ## ID — name   counted only when first 400 chars carry *LOCKED|RATIFIED* and "Rajesh"
+  var out=[], blocks=md.split(/\n## /).slice(1);
+  blocks.forEach(function(b){
+    var head=b.split("\n",1)[0].trim(), body=b.slice(0,400);
+    if (/\*(LOCKED|RATIFIED)\b/.test(body) && body.indexOf("Rajesh")!==-1){
+      var dm=body.match(/(\d{4}-\d{2}-\d{2})/);
+      out.push({ id:head.split("—")[0].trim(), title:head, date:dm?dm[1]:"" });
+    }
+  });
+  return out;
+}
+function parseJsonl(text,label){
+  var out=[];
+  text.split("\n").forEach(function(l,i){
+    if(!l.trim()) return;
+    try{ out.push(JSON.parse(l)); }
+    catch(e){ S.parseNotes.push(label+" line "+(i+1)+": invalid JSON"); }
+  });
+  return out;
+}
+function anchorIndex(){
+  // code (A5, B12, Rule-18…) -> the Constitution elements that cite it. Built from the
+  // draft's own Anchor column, so the relationships are the record's, never invented.
+  if (S._anchorIdx) return S._anchorIdx;
+  var idx={};
+  if (S.draft) S.draft.cats.forEach(function(c){ c.topics.forEach(function(t){
+    t.elements.forEach(function(e){
+      e.anchors.split("·").forEach(function(a){
+        a=a.trim(); if(!a||a==="—") return;
+        (idx[a]=idx[a]||[]).push({key:e.key,name:e.name,topic:t.id});
+      });
+    });
+  });});
+  S._anchorIdx=idx; return idx;
+}
+function anchorLinks(anchors){
+  // render each anchor code as a link into the registers, per the founder's Chat-43 ruling:
+  // "hyperlinks between related items" — never plain text
+  if(!anchors||anchors.trim()==="—") return "—";
+  return anchors.split("·").map(function(a){
+    a=a.trim(); if(!a) return "";
+    return '<a href="#/registers?q='+encodeURIComponent(a)+'">'+esc(a)+'</a>';
+  }).join(" · ");
+}
+function parseRegister(md){
+  var nn=[], wp=[], mode=null, notes=[];
+  var lines=md.split("\n");
+  for (var i=0;i<lines.length;i++){
+    var L=lines[i];
+    if (/^## The full register/.test(L)) { mode="nn"; continue; }
+    if (/^## Working Protocols/.test(L)) { mode="wp"; continue; }
+    if (/^## /.test(L) && mode==="wp") { mode=null; continue; }
+    if (!mode || !/^\|/.test(L) || /^\|[-\s|:]+\|$/.test(L) || /^\|\s*Code\s*\|/.test(L)) continue;
+    var cells=L.split("|").slice(1,-1).map(function(c){return c.trim();});
+    if (mode==="nn" && cells.length>=6){
+      var m=cells[0].match(/(⚠)?\s*\*\*(.+?)\*\*/);
+      if (m) nn.push({ code:m[2], collision:!!m[1], rule:cells[1], says:cells[2], why:cells[3], arch:cells[4], src:cells[5] });
+      else notes.push("register line "+(i+1)+": NN row did not parse");
+    } else if (mode==="wp" && cells.length>=5){
+      var w=cells[0].match(/\*\*(.+?)\*\*/);
+      if (w) wp.push({ code:w[1], rule:cells[1], status:cells[2].replace(/`/g,""), change:cells[3], src:cells[4] });
+      else notes.push("register line "+(i+1)+": WP row did not parse");
+    }
+  }
+  return { nn:nn, wp:wp, notes:notes };
+}
+
+/* ================= boot ================= */
+function boot(){
+  if (!S.pat) return authScreen();
+  setConn("checking…");
+  gh("/user").then(function(){
+    return gh("/repos/"+S.repo.owner+"/"+S.repo.repo);
+  }).then(function(){
+    setConn("● connected");
+    return loadAll();
+  }).then(function(){
+    S.loaded=true; document.getElementById("nav").hidden=false; route();
+  }).catch(function(e){
+    if (String(e.message)!=="401")
+      render('<div class="card"><h2>Could not reach the repository</h2>'+
+        '<div class="err">'+esc(e.message)+'</div>'+
+        '<button class="primary" onclick="boot()">Retry</button> '+
+        '<button onclick="authScreen()">Change token</button></div>');
+  });
+}
+function loadAll(){
+  S.parseNotes=[];
+  var reads = {
+    cfg:"webapp/config/app.json", theme:"webapp/config/theme.json",
+    statuses:"webapp/config/statuses.json", models:"webapp/config/models.json",
+    draft:"wiki/core-rules/CONSTITUTION-DRAFT.md",
+    approved:"wiki/core-rules/CONSTITUTION-APPROVED.md",
+    nnApproved:"wiki/core-rules/NN-APPROVED.md",
+    register:"wiki/core-rules/REGISTER.md",
+    decisions:".github/board/decisions.json",
+    vgTiers:"raw/mcp-db/service-simplified/vg_tiers.jsonl",
+    vgCheckpoints:"raw/mcp-db/service-simplified/vg_checkpoints.jsonl"
+  };
+  var keys=Object.keys(reads);
+  return Promise.all(keys.map(function(k){
+    return readFile(reads[k]).then(function(f){return {k:k,f:f};},
+      function(e){ S.parseNotes.push(reads[k]+" — "+e.message.slice(0,90)); return {k:k,f:null}; });
+  })).then(function(rs){
+    rs.forEach(function(r){
+      if (!r.f) return;
+      try{
+        if (r.k==="cfg"||r.k==="theme"||r.k==="statuses"||r.k==="models"||r.k==="decisions")
+          S[r.k]=JSON.parse(r.f.text);
+        else if (r.k==="draft"){ S.draft=parseDraft(r.f.text); S.parseNotes.push.apply(S.parseNotes,S.draft.notes); }
+        else if (r.k==="approved") S.approved=parseApproved(r.f.text);
+        else if (r.k==="nnApproved") S.nnApproved=parseApproved(r.f.text);
+        else if (r.k==="register"){ S.register=parseRegister(r.f.text); S.parseNotes.push.apply(S.parseNotes,S.register.notes); }
+        else if (r.k==="vgTiers") S.vgTiers=parseJsonl(r.f.text,"vg_tiers");
+        else if (r.k==="vgCheckpoints") S.vgCheckpoints=parseJsonl(r.f.text,"vg_checkpoints");
+      }catch(e){ S.parseNotes.push(r.k+" — parse failed: "+e.message); }
+    });
+    applyTheme(); diag();
+  });
+}
+function applyTheme(){
+  var t=S.theme; if(!t) return;
+  var r=document.documentElement.style;
+  if(t.navy)r.setProperty("--navy",t.navy); if(t.teal)r.setProperty("--teal",t.teal);
+  if(t.bg)r.setProperty("--bg",t.bg); if(t.card)r.setProperty("--card",t.card);
+  if(t.radius)r.setProperty("--radius",t.radius+"px");
+}
+function ruledKeys(){
+  var set={};
+  (S.approved||[]).concat(S.nnApproved||[]).forEach(function(a){ set[a.id]=a; });
+  return set;
+}
+
+/* ================= ui helpers ================= */
+function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g,function(c){
+  return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; }); }
+function md(s){ // minimal inline markdown: bold, code, italics
+  return esc(s).replace(/\*\*(.+?)\*\*/g,"<b>$1</b>").replace(/`(.+?)`/g,"<code>$1</code>");
+}
+function render(html){ document.getElementById("main").innerHTML=html; window.scrollTo(0,0); }
+function setConn(t){ document.getElementById("conn").textContent=t; }
+function setCrumb(t){ document.getElementById("crumb").textContent=t||""; }
+function toast(t){
+  var d=document.createElement("div"); d.className="toast"; d.textContent=t;
+  document.body.appendChild(d); setTimeout(function(){d.remove();},2600);
+}
+function diag(){
+  var exp=(S.cfg&&S.cfg.expected)||{};
+  var parts=[];
+  if(S.draft) parts.push("elements "+S.draft.total+(exp.elements?"/"+exp.elements:""));
+  if(S.register) parts.push("NN "+S.register.nn.length+(exp.nn?"/"+exp.nn:"")+
+                            " · WP "+S.register.wp.length+(exp.wp?"/"+exp.wp:""));
+  if(S.vgCheckpoints) parts.push("VG "+S.vgCheckpoints.length+(exp.vgCheckpoints?"/"+exp.vgCheckpoints:""));
+  if(S.approved) parts.push("ratified "+(S.approved.length+(S.nnApproved?S.nnApproved.length:0)));
+  var bad=[];
+  if(exp.elements&&S.draft&&S.draft.total!==exp.elements) bad.push("element count mismatch");
+  if(exp.nn&&S.register&&S.register.nn.length!==exp.nn) bad.push("NN count mismatch");
+  if(exp.wp&&S.register&&S.register.wp.length!==exp.wp) bad.push("WP count mismatch");
+  document.getElementById("diag").innerHTML =
+    "Parsed: "+parts.join(" · ")+(S.rate?" · API calls left this hour: "+S.rate:"")+
+    (bad.length?' · <span style="color:var(--danger)">⚠ '+bad.join("; ")+"</span>":"")+
+    (S.parseNotes.length?' · <span style="color:var(--danger)">'+S.parseNotes.length+
+      ' parse note(s) — see Settings</span>':"")+
+    " · Every failure is shown, never swallowed.";
+}
+
+/* ================= auth screen ================= */
+function authScreen(msg){
+  document.getElementById("nav").hidden=true; setConn("offline"); setCrumb("");
+  render(
+  '<div class="card"><h2>Connect to the SSOT</h2>'+
+  (msg?'<div class="err">'+esc(msg)+'</div>':"")+
+  '<p class="small">One-time on this device. The token stays in this browser only, is sent only to '+
+  'api.github.com, and is never written into any file. Revoke it any time from GitHub → Settings → '+
+  'Developer settings → Fine-grained tokens.</p>'+
+  '<label>GitHub fine-grained token (Contents RW · Actions RW on the one repo)</label>'+
+  '<input id="f-pat" type="password" autocomplete="off" placeholder="github_pat_…">'+
+  '<div class="row"><div style="flex:2;min-width:140px"><label>Owner</label><input id="f-owner" value="'+esc(S.repo.owner)+'"></div>'+
+  '<div style="flex:2;min-width:140px"><label>Repository</label><input id="f-repo" value="'+esc(S.repo.repo)+'"></div></div>'+
+  '<label>Branch</label><input id="f-branch" value="'+esc(S.repo.branch)+'">'+
+  '<p></p><button class="primary" onclick="doAuth()">Connect</button></div>');
+}
+function doAuth(){
+  var pat=document.getElementById("f-pat").value.trim();
+  if(!pat) return toast("Paste the token first");
+  S.pat=pat;
+  S.repo={ owner:document.getElementById("f-owner").value.trim(),
+           repo:document.getElementById("f-repo").value.trim(),
+           branch:document.getElementById("f-branch").value.trim() };
+  localStorage.setItem("nanbi.pat",S.pat);
+  localStorage.setItem("nanbi.repo",JSON.stringify(S.repo));
+  boot();
+}
+
+/* ================= router ================= */
+window.addEventListener("hashchange",route);
+function route(){
+  if(!S.loaded) return;
+  var h=location.hash||"#/";
+  document.querySelectorAll("nav.bottom a").forEach(function(a){
+    a.classList.toggle("active", a.getAttribute("href")===h.split("?")[0] ||
+      (a.getAttribute("href")!=="#/" && h.indexOf(a.getAttribute("href"))===0));
+  });
+  var m;
+  if (h==="#/" ) return vHome();
+  if (h==="#/ratify") return vRatify();
+  if ((m=h.match(/^#\/ratify\/([A-F]\d{1,2})$/))) return vTopic(m[1]);
+  if ((m=h.match(/^#\/registers(?:\/(wp|vg))?(?:\?q=(.*))?$/)))
+    return vRegisters(m[1]||"nn", m[2]?decodeURIComponent(m[2]):"");
+  if (h==="#/queue") return vStub("Task Queue","Arrives at milestone M4 — priority numbers, drag-drop reorder, RETURN-TO, the 10 locked colours.");
+  if (h==="#/studio") return vStub("Prompt Studio","Arrives at milestone M2 — nature of task → specialists → consolidation → one closing model, side by side.");
+  if (h==="#/settings") return vSettings();
+  vHome();
+}
+
+/* ================= views ================= */
+function vHome(){
+  setCrumb("");
+  var ruled=ruledKeys(), ruledN=Object.keys(ruled).length;
+  var exp=(S.cfg&&S.cfg.expected)||{elements:S.draft?S.draft.total:0,nn:71,wp:48};
+  var conN=(S.approved||[]).length, nnN=(S.nnApproved||[]).length;
+  var h='<div class="card"><h2>Where things stand</h2><div class="kpis">'+
+    '<div class="kpi"><div class="n">'+(conN+nnN)+'</div><div class="k">Ratified</div></div>'+
+    '<div class="kpi"><div class="n">'+(S.draft?S.draft.total:"—")+'</div><div class="k">Elements drafted</div></div>'+
+    '<div class="kpi"><div class="n">'+(S.register?S.register.nn.length:"—")+'</div><div class="k">Non-negotiables</div></div>'+
+    '<div class="kpi"><div class="n">'+(S.register?S.register.wp.length:"—")+'</div><div class="k">Working protocols</div></div></div>';
+  if (S.draft){
+    var pct=Math.round(conN/(S.draft.total||1)*100);
+    h+='<h3>Constitution — '+conN+' of '+S.draft.total+' elements ratified</h3>'+
+       '<div class="progress"><i style="width:'+Math.max(pct,1)+'%"></i></div>'+
+       '<div class="small">At the ruled cadence of 5/day the 30 topics close in about a week. '+
+       '<a href="#/ratify">Open the ratification browser →</a></div>';
+  }
+  h+='</div>';
+  if (S.decisions && S.decisions.length){
+    h+='<div class="card"><h2>⛔ Waiting on you — '+S.decisions.length+'</h2><div class="tablewrap"><table>'+
+       '<tr><th>Open</th><th>Decision</th><th>Time</th></tr>';
+    S.decisions.slice().sort(function(a,b){return daysOpen(b.raised)-daysOpen(a.raised);})
+      .forEach(function(d){
+        h+='<tr><td><b>'+daysOpen(d.raised)+'d</b></td><td><b>'+esc(d.title)+'</b>'+
+           '<div class="small">'+md(d.question)+'</div></td><td class="small">'+esc(d.cost||"—")+'</td></tr>';
+      });
+    h+='</table></div></div>';
+  }
+  h+='<div class="card"><h2>What\u2019s next</h2><div class="empty">The live task queue arrives at '+
+     'milestone M4. Until then, position 1 is the ratification sitting itself — '+
+     '<a href="#/ratify">start ruling</a>.</div></div>';
+  render(h);
+}
+
+function vRatify(){
+  setCrumb("Ratify");
+  if(!S.draft) return render('<div class="card"><div class="err">CONSTITUTION-DRAFT.md could not be loaded or parsed — see Settings for details.</div></div>');
+  var ruled=ruledKeys();
+  var pOnly=/p=1/.test(location.hash);
+  var h='<div class="card"><h2>Constitution — '+S.draft.total+' drafted elements, 30 topics</h2>'+
+    '<p class="small">Basis codes: <span class="pill badge-R">R</span> your words on record — confirm fast. '+
+    '<span class="pill badge-I">I</span> inferred from locked decisions — check the inference. '+
+    '<span class="pill badge-P">P</span> <b>proposed by Claude with no basis in the record — slow down here.</b></p>'+
+    '<div class="row"><button class="'+(pOnly?"primary":"")+'" onclick="location.hash=\'#/ratify'+(pOnly?"":"?p=1")+'\'">'+
+    (pOnly?"Showing P only — show all":"Show only P elements")+'</button></div></div>';
+  S.draft.cats.forEach(function(c){
+    h+='<div class="card"><h2>Category '+c.id+' — '+esc(c.name)+'</h2><div class="topicgrid">';
+    c.topics.forEach(function(t){
+      var els=pOnly?t.elements.filter(function(e){return e.basis==="P";}):t.elements;
+      if(pOnly && !els.length) return;
+      var done=t.elements.filter(function(e){return ruled[e.key]||e.locked;}).length;
+      h+='<div class="topiccard" onclick="location.hash=\'#/ratify/'+t.id+'\'"><b>'+t.id+'</b>'+
+         '<span class="small">'+esc(t.name)+'</span>'+
+         '<div class="progress"><i style="width:'+Math.round(done/(t.elements.length||1)*100)+'%"></i></div>'+
+         '<span class="small">'+done+' / '+t.elements.length+(t.question?' · <span style="color:var(--danger)">Q</span>':"")+'</span></div>';
+    });
+    h+='</div></div>';
+  });
+  render(h);
+}
+
+function vTopic(id){
+  var topic=null,cat=null;
+  S.draft.cats.forEach(function(c){c.topics.forEach(function(t){ if(t.id===id){topic=t;cat=c;} });});
+  if(!topic) return vRatify();
+  setCrumb("Ratify · "+id);
+  var ruled=ruledKeys();
+  var h='<div class="card"><button class="quiet" onclick="location.hash=\'#/ratify\'">← All topics</button>'+
+    '<h2>'+topic.id+' · '+esc(topic.name)+'</h2>'+
+    (topic.blurb?'<p class="small">'+md(topic.blurb)+'</p>':"")+
+    (topic.question?'<blockquote class="q-founder"><b>Founder question:</b> '+md(topic.question)+'</blockquote>':"")+
+    '</div>';
+  topic.elements.forEach(function(e,idx){
+    var r=ruled[e.key];
+    h+='<div class="elem basis-'+e.basis+(r||e.locked?' ruled':'')+'" onclick="sheetElem(\''+id+'\','+idx+')">'+
+      '<div class="row"><b>'+e.no+' · '+esc(e.name)+'</b>'+
+      '<span class="pill badge-'+e.basis+'">'+e.basis+'</span>'+
+      (e.locked?'<span class="pill badge-LOCKED">LOCKED</span>':"")+
+      (r?'<span class="pill badge-LOCKED">RATIFIED '+esc(r.date)+'</span>':"")+'</div>'+
+      '<div class="content">'+md(e.content.length>260?e.content.slice(0,260)+"…":e.content)+'</div>'+
+      '<div class="small" onclick="event.stopPropagation()">Rests on: '+anchorLinks(e.anchors)+'</div></div>';
+  });
+  render(h);
+}
+function sheetElem(topicId, idx){
+  var topic=null;
+  S.draft.cats.forEach(function(c){c.topics.forEach(function(t){ if(t.id===topicId)topic=t; });});
+  var e=topic.elements[idx], r=ruledKeys()[e.key];
+  var back=document.createElement("div"); back.className="sheet-back";
+  back.onclick=function(ev){ if(ev.target===back) back.remove(); };
+  back.innerHTML='<div class="sheet"><h2>'+esc(e.key)+' — '+esc(e.name)+'</h2>'+
+    '<div class="row"><span class="pill badge-'+e.basis+'">basis '+e.basis+'</span>'+
+    (e.locked?'<span class="pill badge-LOCKED">LOCKED</span>':"")+
+    (r?'<span class="pill badge-LOCKED">RATIFIED '+esc(r.date)+'</span>':"")+'</div>'+
+    '<h3>Proposed content</h3><blockquote>'+md(e.content)+'</blockquote>'+
+    '<h3>Basis</h3><p class="small">'+md(e.basisNote)+'</p>'+
+    '<h3>Rests on — tap to open the rule</h3><p class="small">'+anchorLinks(e.anchors)+'</p>'+
+    '<h3>Rule it</h3>'+
+    '<div class="row">'+
+    '<button disabled>✅ Accept</button><button disabled>✏️ Amend</button>'+
+    '<button disabled>❌ Reject</button><button disabled>⏸ Defer</button></div>'+
+    '<p class="small">Ruling buttons go live at milestone M3 — each ruling will be recorded with an IST '+
+    'timestamp, promoted into the frozen registry format within a minute, and never overwritten '+
+    '(re-rulings supersede). Until then this browser is read-only by design: no accidental writes.</p>'+
+    '<p class="small">Source: <code>wiki/core-rules/CONSTITUTION-DRAFT.md</code> · '+topicId+' row '+e.no+' · viewed '+ist()+'</p>'+
+    '<button class="primary" onclick="this.closest(\'.sheet-back\').remove()">Close</button></div>';
+  back.querySelectorAll("a[href]").forEach(function(a){ a.addEventListener("click",function(){ back.remove(); }); });
+  document.body.appendChild(back);
+}
+
+function vRegisters(which,q){
+  setCrumb("Registers");
+  q=q||"";
+  if(!S.register) return render('<div class="card"><div class="err">REGISTER.md could not be loaded — see Settings.</div></div>');
+  var vgN=(S.vgCheckpoints||[]).length;
+  var h='<div class="card"><h2>Registers — live tables, not spreadsheets</h2>'+
+    '<div class="row">'+
+    '<button class="'+(which==="nn"?"primary":"")+'" onclick="location.hash=\'#/registers\'">Non-negotiables ('+S.register.nn.length+')</button>'+
+    '<button class="'+(which==="wp"?"primary":"")+'" onclick="location.hash=\'#/registers/wp\'">Working protocols ('+S.register.wp.length+')</button>'+
+    '<button class="'+(which==="vg"?"primary":"")+'" onclick="location.hash=\'#/registers/vg\'">Validation Gateway ('+vgN+')</button></div>'+
+    '<label>Filter</label><input id="regq" placeholder="Type to filter…" value="'+esc(q)+'" oninput="regFilter()">'+
+    '<p class="small">Policies &amp; SOPs: <b>no reconciled register exists in the record yet</b> — they were '+
+    'never counted (SSOT §7). Listing them here before the excavation docket runs would be inventing data, '+
+    'so the gap is stated instead of papered over.</p></div>'+
+    '<div class="card"><div class="tablewrap" id="regtable"></div></div>';
+  render(h); regTable(which,q.toLowerCase());
+  window.regFilter=function(){ regTable(which,document.getElementById("regq").value.toLowerCase()); };
+}
+function citedBy(code){
+  var els=anchorIndex()[code]||[];
+  if(!els.length) return '<span class="small">—</span>';
+  return '<a href="javascript:void(0)" onclick="sheetCites(\''+esc(code)+'\')">'+els.length+' element'+(els.length>1?"s":"")+'</a>';
+}
+function sheetCites(code){
+  var els=anchorIndex()[code]||[];
+  var back=document.createElement("div"); back.className="sheet-back";
+  back.onclick=function(ev){ if(ev.target===back) back.remove(); };
+  var list=els.map(function(e){
+    return '<div class="elem" onclick="this.closest(\'.sheet-back\').remove();location.hash=\'#/ratify/'+e.topic+'\'">'+
+      '<b>'+esc(e.key)+'</b> · '+esc(e.name)+'</div>';
+  }).join("");
+  back.innerHTML='<div class="sheet"><h2>'+esc(code)+' — cited by '+els.length+' Constitution element'+(els.length>1?"s":"")+'</h2>'+
+    (list||'<div class="empty">No element cites this code.</div>')+
+    '<button class="primary" onclick="this.closest(\'.sheet-back\').remove()">Close</button></div>';
+  document.body.appendChild(back);
+}
+function regTable(which,q){
+  var rows, h;
+  if (which==="nn"){
+    rows=S.register.nn.filter(function(r){ return !q || (r.code+" "+r.rule+" "+r.says).toLowerCase().indexOf(q)!==-1; });
+    h='<table><tr><th>Code</th><th>Rule</th><th>What it says</th><th>Cited by</th><th>Arch</th></tr>';
+    rows.forEach(function(r){
+      h+='<tr><td><b>'+esc(r.code)+'</b>'+(r.collision?' <span class="pill" style="background:rgba(245,158,11,.15);color:#B45309">⚠ ID collision</span>':"")+
+        '</td><td>'+esc(r.rule)+'</td>'+
+        '<td class="small">'+esc(r.says)+'</td><td>'+citedBy(r.code)+'</td><td class="small">'+esc(r.arch)+'</td></tr>';
+    });
+  } else if (which==="wp"){
+    rows=S.register.wp.filter(function(r){ return !q || (r.code+" "+r.rule).toLowerCase().indexOf(q)!==-1; });
+    h='<table><tr><th>Code</th><th>Protocol</th><th>Status</th><th>Cited by</th><th>Change</th></tr>';
+    rows.forEach(function(r){
+      h+='<tr><td><b>'+esc(r.code)+'</b></td><td>'+esc(r.rule)+'</td>'+
+        '<td><span class="pill" style="background:rgba(27,122,138,.12);color:var(--teal)">'+esc(r.status)+'</span></td>'+
+        '<td>'+citedBy(r.code)+'</td><td class="small">'+esc(r.change)+'</td></tr>';
+    });
+  } else {
+    // Validation Gateway: 18 tiers -> 294 checkpoint definitions, straight from the record
+    var tiers={}; (S.vgTiers||[]).forEach(function(t){ tiers[t.id]=t; });
+    rows=(S.vgCheckpoints||[]).filter(function(c){
+      var t=tiers[c.tier_id]||{};
+      return !q || (c.checkpoint_code+" "+c.section+" "+c.name+" "+(c.what_it_validates||"")+" "+(t.name||""))
+        .toLowerCase().indexOf(q)!==-1;
+    });
+    if(!(S.vgCheckpoints||[]).length){
+      document.getElementById("regtable").innerHTML=
+        '<div class="err">VG data could not be loaded from raw/mcp-db/ — see Settings.</div>';
+      return;
+    }
+    h='<table><tr><th>Code</th><th>Tier</th><th>Checkpoint</th><th>What it validates</th><th>Frequency</th></tr>';
+    var lastTier="";
+    rows.forEach(function(c){
+      var t=tiers[c.tier_id]||{};
+      var tierLabel="T"+(t.tier_number||"?")+" · "+(t.name||"");
+      h+='<tr><td><b>'+esc(c.checkpoint_code)+'</b></td>'+
+        '<td class="small">'+(tierLabel===lastTier?"〃":esc(tierLabel))+'</td>'+
+        '<td><b>'+esc(c.name)+'</b><div class="small">'+esc(c.section)+'</div></td>'+
+        '<td class="small">'+esc(c.what_it_validates||"")+'</td>'+
+        '<td class="small">'+esc(c.frequency||"")+'</td></tr>';
+      lastTier=tierLabel;
+    });
+  }
+  h+='</table>'+(rows.length?"":'<div class="empty">Nothing matches that filter.</div>');
+  document.getElementById("regtable").innerHTML=h;
+}
+
+function vStub(title,body){
+  setCrumb(title);
+  render('<div class="card"><h2>'+esc(title)+'</h2><div class="empty">'+esc(body)+'</div></div>');
+}
+
+function vSettings(){
+  setCrumb("Settings");
+  var h='<div class="card"><h2>Connection</h2>'+
+    '<p class="small">Token on this device: <code>'+(S.pat?esc(S.pat.slice(0,10))+"…":"none")+'</code></p>'+
+    '<p class="small">Repository: <code>'+esc(S.repo.owner+"/"+S.repo.repo)+'</code> · branch <code>'+esc(S.repo.branch)+'</code></p>'+
+    '<p class="small">API calls remaining this hour: '+(S.rate||"—")+'</p>'+
+    '<div class="row"><button onclick="forget()">Forget this device</button>'+
+    '<button onclick="loadAll().then(route)">Reload data</button></div></div>';
+  h+='<div class="card"><h2>Parser diagnostics</h2>';
+  if (S.parseNotes.length){
+    h+='<p class="small">Anything the parsers could not read is listed here rather than silently dropped:</p>';
+    S.parseNotes.forEach(function(n){ h+='<div class="err">'+esc(n)+'</div>'; });
+  } else h+='<div class="empty">All files parsed clean.</div>';
+  h+='</div>';
+  h+='<div class="card"><h2>About</h2><p class="small">Nanbi Console — generic shell, no project data '+
+     'inside it. Reads and writes the private SSOT repository with your token. Writes (from M3) are '+
+     'scanned client-side for credentials and personal data before anything leaves this device; the '+
+     'repository\u2019s own hooks enforce the same rules server-side. Viewed '+ist()+'</p></div>';
+  render(h);
+}
+function forget(){
+  localStorage.removeItem("nanbi.pat"); S.pat="";
+  toast("Token removed from this device"); authScreen();
+}
+
+boot();
+</script>
+</body>
+</html>
