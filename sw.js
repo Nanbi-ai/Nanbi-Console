@@ -1,6 +1,6 @@
 /* Nanbi Studio service worker — makes the app installable and the shell
    available offline. GitHub API calls always go to the network. */
-var CACHE = 'nanbi-studio-v1';
+var CACHE = 'nanbi-studio-v2';
 var SHELL = ['./', './index.html', './manifest.webmanifest',
              './icons/icon-192.png', './icons/icon-512.png',
              './icons/nanbi-monogram.svg'];
@@ -20,8 +20,10 @@ self.addEventListener('activate', function (e) {
 self.addEventListener('fetch', function (e) {
   var url = new URL(e.request.url);
   if (e.request.method !== 'GET' || url.origin !== location.origin) return; // API traffic untouched
+  var req = (e.request.mode === 'navigate' || url.pathname.endsWith('index.html'))
+    ? new Request(e.request.url, { cache: 'no-cache' }) : e.request;
   e.respondWith(
-    fetch(e.request).then(function (res) {
+    fetch(req).then(function (res) {
       var copy = res.clone();
       caches.open(CACHE).then(function (c) { c.put(e.request, copy); });
       return res;
