@@ -3,7 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Nanbi Console</title>
+<title>Nanbi Studio</title>
+<link rel="icon" type="image/svg+xml" href="icons/nanbi-monogram.svg">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#1A3C6E">
 <!--
   NANBI CONSOLE — generic shell. Contains NO project data and NO secrets.
   Everything it shows is fetched at runtime from a private GitHub repository
@@ -111,7 +115,7 @@ footer.diag{max-width:980px;margin:20px auto 8px;padding:0 16px;font-size:11.5px
 </head>
 <body>
 <header class="app">
-  <h1>Nanbi</h1><span class="crumb" id="crumb"></span>
+  <svg viewBox="0 0 100 100" style="height:26px;width:26px;flex:none" aria-hidden="true"><defs><linearGradient id="hg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FF8A65"/><stop offset="1" stop-color="#E8674A"/></linearGradient></defs><path d="M30,82 L30,38 L70,82 L70,38" fill="none" stroke="url(#hg)" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/><circle cx="30" cy="19" r="7" fill="none" stroke="url(#hg)" stroke-width="7"/><circle cx="70" cy="19" r="7" fill="none" stroke="url(#hg)" stroke-width="7"/></svg><h1>Nanbi Studio</h1><span class="crumb" id="crumb"></span>
   <span class="spacer"></span><span class="conn" id="conn">offline</span>
 </header>
 <nav class="bottom" id="nav" hidden>
@@ -927,7 +931,7 @@ function vSettings(){
     S.parseNotes.forEach(function(n){ h+='<div class="err">'+esc(n)+'</div>'; });
   } else h+='<div class="empty">All files parsed clean.</div>';
   h+='</div>';
-  h+='<div class="card"><h2>About</h2><p class="small">Nanbi Console — generic shell, no project data '+
+  h+='<div class="card"><h2>About</h2><p class="small">Nanbi Studio — generic shell, no project data '+
      'inside it. Reads and writes the private SSOT repository with your token. Writes (from M3) are '+
      'scanned client-side for credentials and personal data before anything leaves this device; the '+
      'repository\u2019s own hooks enforce the same rules server-side. Viewed '+ist()+'</p></div>';
