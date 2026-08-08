@@ -1,6 +1,6 @@
-# Nanbi Console
+# Nanbi's Studio
 
-Generic web console shell — **no data, no secrets in this repository, ever.**
+Nanbi's front end — a generic web shell — **no data, no secrets in this repository, ever.**
 
 Everything shown is fetched at runtime from a private repository via the GitHub API,
 after the owner signs in with their own fine-grained token. The token stays in the
