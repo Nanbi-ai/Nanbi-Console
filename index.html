@@ -421,6 +421,7 @@ function loadAll(){
     decisions:".github/board/decisions.json",
     routing:"prompts/ROUTING.json",
     split:"webapp/config/split.json",
+    rulings:"webapp/data/rulings.jsonl",
     vgTiers:"raw/mcp-db/service-simplified/vg_tiers.jsonl",
     vgCheckpoints:"raw/mcp-db/service-simplified/vg_checkpoints.jsonl"
   };
@@ -438,6 +439,7 @@ function loadAll(){
         else if (r.k==="approved") S.approved=parseApproved(r.f.text);
         else if (r.k==="nnApproved") S.nnApproved=parseApproved(r.f.text);
         else if (r.k==="register"){ S.register=parseRegister(r.f.text); S.parseNotes.push.apply(S.parseNotes,S.register.notes); }
+        else if (r.k==="rulings") S.rulings=parseJsonl(r.f.text,"rulings");
         else if (r.k==="vgTiers") S.vgTiers=parseJsonl(r.f.text,"vg_tiers");
         else if (r.k==="vgCheckpoints") S.vgCheckpoints=parseJsonl(r.f.text,"vg_checkpoints");
       }catch(e){ S.parseNotes.push(r.k+" — parse failed: "+e.message); }
@@ -453,9 +455,22 @@ function applyTheme(){
   if(t.radius)r.setProperty("--radius",t.radius+"px");
 }
 function ruledKeys(){
+  // the frozen registries are the record; the ledger is what has been ruled but may
+  // not have been promoted yet (about a minute). Both count, ledger last so a
+  // re-ruling supersedes what came before.
   var set={};
   (S.approved||[]).concat(S.nnApproved||[]).forEach(function(a){ set[a.id]=a; });
+  (S.rulings||[]).forEach(function(r){
+    if(!r||!r.item) return;
+    if (r.verdict==="ACCEPT"||r.verdict==="AMEND") set[r.item]={id:r.item,date:(r.ist||"").slice(0,11),pending:true};
+    else delete set[r.item];
+  });
   return set;
+}
+function rulingFor(key){
+  var last=null;
+  (S.rulings||[]).forEach(function(r){ if(r&&r.item===key) last=r; });
+  return last;
 }
 
 /* ================= ui helpers ================= */
@@ -716,7 +731,7 @@ function wrRuns(id){
 function sheetElem(topicId, idx){
   var topic=null;
   S.draft.cats.forEach(function(c){c.topics.forEach(function(t){ if(t.id===topicId)topic=t; });});
-  var e=topic.elements[idx], r=ruledKeys()[e.key];
+  var e=topic.elements[idx], r=ruledKeys()[e.key], prev=rulingFor(e.key);
   var back=document.createElement("div"); back.className="sheet-back";
   back.onclick=function(ev){ if(ev.target===back) back.remove(); };
   back.innerHTML='<div class="sheet"><h2>'+esc(e.key)+' — '+esc(e.name)+'</h2>'+
@@ -727,18 +742,85 @@ function sheetElem(topicId, idx){
     '<h3>Basis</h3><p class="small">'+md(e.basisNote)+'</p>'+
     '<h3>Rests on — tap to open the rule</h3><p class="small">'+anchorLinks(e.anchors)+'</p>'+
     '<h3>Rule it</h3>'+
+    (prev?'<p class="small">Last ruling on the record: <b>'+esc(prev.verdict)+'</b> · '+esc(prev.ist||"")+
+          (prev.note?' — '+esc(prev.note):"")+'. A new ruling supersedes it; nothing is overwritten.</p>':"")+
     '<div class="row">'+
-    '<button disabled>✅ Accept</button><button disabled>✏️ Amend</button>'+
-    '<button disabled>❌ Reject</button><button disabled>⏸ Defer</button></div>'+
-    '<p class="small">Ruling buttons go live at milestone M3 — each ruling will be recorded with an IST '+
-    'timestamp, promoted into the frozen registry format within a minute, and never overwritten '+
-    '(re-rulings supersede). Until then this browser is read-only by design: no accidental writes.</p>'+
+    '<button class="primary" onclick="ruleIt(\''+esc(topicId)+'\','+idx+',\'ACCEPT\')">Accept as drafted</button>'+
+    '<button onclick="ruleIt(\''+esc(topicId)+'\','+idx+',\'AMEND\')">Amend the wording</button>'+
+    '<button onclick="ruleIt(\''+esc(topicId)+'\','+idx+',\'REJECT\')">Reject</button>'+
+    '<button onclick="ruleIt(\''+esc(topicId)+'\','+idx+',\'DEFER\')">Defer</button></div>'+
+    '<div id="ruleform"></div>'+
     '<p class="small">Source: <code>wiki/core-rules/CONSTITUTION-DRAFT.md</code> · '+topicId+' row '+e.no+' · viewed '+ist()+'</p>'+
     '<button class="primary" onclick="this.closest(\'.sheet-back\').remove()">Close</button></div>';
   back.querySelectorAll("a[href]").forEach(function(a){ a.addEventListener("click",function(){ back.remove(); }); });
   document.body.appendChild(back);
 }
 
+function ruleIt(topicId, idx, verdict){
+  var topic=null;
+  S.draft.cats.forEach(function(c){c.topics.forEach(function(t){ if(t.id===topicId)topic=t; });});
+  var e=topic.elements[idx];
+  var box=document.getElementById("ruleform"); if(!box) return;
+  var needText = verdict==="AMEND";
+  var needNote = verdict==="REJECT"||verdict==="DEFER";
+  var label={ACCEPT:"Accept as drafted",AMEND:"Amend the wording",REJECT:"Reject",DEFER:"Defer"}[verdict];
+  box.innerHTML='<div class="card" style="margin-top:12px;border-color:var(--coral)">'+
+    '<h3 style="margin-top:0">'+esc(label)+' — '+esc(e.key)+'</h3>'+
+    (needText?'<label>The final wording (this becomes the ratified text)</label>'+
+      '<textarea id="rl-text" rows="6">'+esc(e.content)+'</textarea>':"")+
+    '<label>'+(needNote?'Why (required — the reason is part of the record)':'Note (optional)')+'</label>'+
+    '<textarea id="rl-note" rows="2"></textarea>'+
+    '<div class="row"><button class="primary" id="rl-go" onclick="ruleCommit(\''+esc(topicId)+'\','+idx+',\''+verdict+'\')">'+
+    'Record this ruling</button><button onclick="document.getElementById(\'ruleform\').innerHTML=\'\'">Cancel</button></div>'+
+    '<div id="rl-status"></div></div>';
+  box.scrollIntoView({block:"nearest"});
+}
+function ruleCommit(topicId, idx, verdict){
+  var topic=null;
+  S.draft.cats.forEach(function(c){c.topics.forEach(function(t){ if(t.id===topicId)topic=t; });});
+  var e=topic.elements[idx];
+  var noteEl=document.getElementById("rl-note"), textEl=document.getElementById("rl-text");
+  var note=(noteEl&&noteEl.value||"").trim();
+  var finalText=textEl?(textEl.value||"").trim():e.content;
+  if((verdict==="REJECT"||verdict==="DEFER") && !note) return toast("A reason is required — it becomes part of the record");
+  if(verdict==="AMEND" && !finalText) return toast("Amended wording cannot be empty");
+  var st=document.getElementById("rl-status"), btn=document.getElementById("rl-go");
+  btn.disabled=true; st.innerHTML='<p class="small"><span class="spin"></span> Recording…</p>';
+  var rec={ id:"R-"+Date.now(), ist:ist(), kind:"constitution", item:e.key, topic:topicId,
+            name:e.name, verdict:verdict, proposedText:e.content,
+            finalText:(verdict==="ACCEPT"||verdict==="AMEND")?finalText:"", note:note,
+            supersedes:(rulingFor(e.key)||{}).id||"" };
+  appendLedger(rec).then(function(){
+    S.rulings=(S.rulings||[]).concat([rec]);
+    st.innerHTML='<p class="small">✅ Recorded '+esc(rec.ist)+'. The registry catches up within about a minute.</p>';
+    setTimeout(function(){
+      var b=document.querySelector(".sheet-back"); if(b) b.remove();
+      route();
+    }, 900);
+  }, function(err){
+    btn.disabled=false;
+    st.innerHTML='<div class="err">'+esc(err.message)+'</div>';
+  });
+}
+function appendLedger(rec){
+  // read-modify-write of ONE append-only line. On a concurrent change the file is
+  // re-read and the line re-appended — a ruling is never silently dropped or overwritten.
+  var p=(S.cfg&&S.cfg.paths&&S.cfg.paths.rulings)||"webapp/data/rulings.jsonl";
+  function attempt(n){
+    return readFile(p).then(function(f){ return f; }, function(){ return {text:""}; })
+    .then(function(f){
+      var body=(f.text||"");
+      if (body && body.slice(-1)!=="\n") body+="\n";
+      body += JSON.stringify(rec)+"\n";
+      return putFile(p, body, "Ruling "+rec.verdict+" on "+rec.item+" ("+rec.ist+")")
+        .catch(function(err){
+          if(n<3 && /409|sha|conflict/i.test(err.message)) return attempt(n+1);
+          throw err;
+        });
+    });
+  }
+  return attempt(0);
+}
 function vRegisters(which,q){
   setCrumb("Registers","Constitution · NNs · WPs · Validation Gateway");
   q=q||"";
@@ -1122,7 +1204,7 @@ function vSettings(){
     S.parseNotes.forEach(function(n){ h+='<div class="err">'+esc(n)+'</div>'; });
   } else h+='<div class="empty">All files parsed clean.</div>';
   h+='</div>';
-  h+='<div class="card"><h2>About</h2><p class="small">Build <code>2026-08-09 r6</code> · '+
+  h+='<div class="card"><h2>About</h2><p class="small">Build <code>2026-08-09 r7 · rulings live</code> · '+
      '<button class="quiet" onclick="hardRefresh()">Force update</button></p>'+
      '<p class="small">Nanbi Studio — generic shell, no project data '+
      'inside it. Reads and writes the private SSOT repository with your token. Writes (from M3) are '+
