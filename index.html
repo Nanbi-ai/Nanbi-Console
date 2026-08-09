@@ -144,7 +144,8 @@ footer.diag{max-width:980px;margin:20px auto 8px;padding:0 16px;font-size:11.5px
 /* installed as an app: Windows/macOS already print the name in the title bar,
    so the in-app wordmark would be the second one. Show the mark alone. */
 @media all and (display-mode:standalone){ header.app h1{display:none} }
-html.installed header.app h1{display:none}
+html.installed header.app .brandbox{display:none}
+html.installed header.app .navbtns{padding-left:16px}
 #updatebar{position:fixed;left:50%;transform:translateX(-50%);bottom:78px;z-index:70;
   background:var(--navy);color:#fff;border-radius:999px;padding:9px 10px 9px 18px;
   display:flex;align-items:center;gap:10px;font-size:14px;box-shadow:0 6px 20px rgba(0,0,0,.25)}
@@ -553,7 +554,7 @@ function route(){
   if (h==="#/" ) return vHome();
   if (h==="#/ratify") return vRatify();
   if ((m=h.match(/^#\/ratify\/([A-F]\d{1,2})$/))) return vTopic(m[1]);
-  if ((m=h.match(/^#\/registers(?:\/(nn|wp|vg|const))?(?:\?q=(.*))?$/)))
+  if ((m=h.match(/^#\/registers(?:\/(nn|wp|vg|const))?(?:\?(?:q=([^&]*))?&?(?:only=1)?)?$/)))
     return vRegisters(m[1]||"const", m[2]?decodeURIComponent(m[2]):"");
   if (h==="#/queue") return vStub("Task Queue","Arrives at milestone M4 — priority numbers, drag-drop reorder, RETURN-TO, the 10 locked colours.");
   if (h==="#/studio") return vStudio();
@@ -578,7 +579,8 @@ function vHome(){
     h+='<h3>Constitution — '+conN+' of '+S.draft.total+' elements ratified</h3>'+
        '<div class="progress"><i style="width:'+Math.max(pct,1)+'%"></i></div>'+
        '<div class="small">At the ruled cadence of 5/day the 30 topics close in about a week. '+
-       '<a href="#/registers/const">Open the Constitution register →</a></div>';
+       '<a href="#/registers/const?only=1">Ratify the next one →</a> · '+
+       '<a href="#/registers/const">the whole Constitution register</a></div>';
   }
   h+='</div>';
   if (S.decisions && S.decisions.length){
@@ -782,7 +784,7 @@ function sheetCites(code){
   document.body.appendChild(back);
 }
 function regTable(which,q){
-  var rows, h;
+  var rows, h, conNAll=S.draft?S.draft.total:0;
   if (which==="const"){
     // The Constitution belongs in the register beside the rules it governs (founder, 09 Aug).
     var ruled=ruledKeys(); rows=[];
@@ -791,17 +793,28 @@ function regTable(which,q){
     });});
     rows=rows.filter(function(r){ return !q ||
       (r.e.key+" "+r.e.name+" "+r.t.id+" "+r.t.name+" "+r.e.content).toLowerCase().indexOf(q)!==-1; });
-    h='<table><tr><th>Element</th><th>Topic</th><th>Basis</th><th>Status</th><th>Rests on</th></tr>';
+    var ruledN=rows.filter(function(r){ return ruled[r.e.key]||r.e.locked; }).length;
+    var only=/only=1/.test(location.hash);
+    if(only) rows=rows.filter(function(r){ return !(ruled[r.e.key]||r.e.locked); });
+    h='<div class="row" style="margin-bottom:10px"><b>'+ruledN+' ratified</b>'+
+      '<span class="small">'+rows.length+' shown · '+(conNAll-ruledN)+' still awaiting your ruling</span>'+
+      '<span style="flex:1"></span>'+
+      '<button class="'+(only?"primary":"")+'" onclick="location.hash=\'#/registers/const'+(only?"":"?only=1")+'\'">'+
+      (only?"Showing only unruled":"Show only unruled")+'</button></div>'+
+      '<table><tr><th>Element</th><th>Topic</th><th>Basis</th><th>Ratify</th><th>Rests on</th></tr>';
     var lastT="";
     rows.forEach(function(r){
       var rr=ruled[r.e.key], tl=r.t.id+" · "+r.t.name;
-      h+='<tr class="click" onclick="location.hash=\'#/ratify/'+r.t.id+'\'">'+
-        '<td>'+codeLabel(r.e.key)+'</td>'+
-        '<td class="small">'+(tl===lastT?"〃":esc(tl))+'</td>'+
+      var idx=r.t.elements.indexOf(r.e);
+      h+='<tr>'+
+        '<td class="click" onclick="sheetElem(\''+r.t.id+'\','+idx+')">'+codeLabel(r.e.key)+'</td>'+
+        '<td class="small click" onclick="location.hash=\'#/ratify/'+r.t.id+'\'">'+(tl===lastT?"〃":esc(tl))+'</td>'+
         '<td><span class="pill badge-'+r.e.basis+'">'+r.e.basis+'</span></td>'+
-        '<td>'+(rr||r.e.locked?'<span class="pill badge-LOCKED">RATIFIED</span>'
-              :'<span class="pill" style="background:rgba(201,97,74,.12);color:#9A4231">Rule it &#8594;</span>')+'</td>'+
-        '<td class="small" onclick="event.stopPropagation()">'+anchorLinks(r.e.anchors)+'</td></tr>';
+        '<td>'+(rr||r.e.locked
+              ? '<span class="pill badge-LOCKED">RATIFIED</span>'
+              : '<button class="primary" style="padding:5px 12px;font-size:13.5px" '+
+                'onclick="sheetElem(\''+r.t.id+'\','+idx+')">Ratify / amend</button>')+'</td>'+
+        '<td class="small">'+anchorLinks(r.e.anchors)+'</td></tr>';
       lastT=tl;
     });
   } else if (which==="nn"){
@@ -1109,7 +1122,7 @@ function vSettings(){
     S.parseNotes.forEach(function(n){ h+='<div class="err">'+esc(n)+'</div>'; });
   } else h+='<div class="empty">All files parsed clean.</div>';
   h+='</div>';
-  h+='<div class="card"><h2>About</h2><p class="small">Build <code>2026-08-09 r5</code> · '+
+  h+='<div class="card"><h2>About</h2><p class="small">Build <code>2026-08-09 r6</code> · '+
      '<button class="quiet" onclick="hardRefresh()">Force update</button></p>'+
      '<p class="small">Nanbi Studio — generic shell, no project data '+
      'inside it. Reads and writes the private SSOT repository with your token. Writes (from M3) are '+
