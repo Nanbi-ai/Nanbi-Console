@@ -1,15 +1,35 @@
 {
   "name": "Nanbi Studio",
   "short_name": "Nanbi",
-  "description": "Nanbi's front end — governance ratification, task queue, and the multimodel studio.",
+  "description": "Nanbi's front end \u2014 governance ratification, task queue, and the multimodel studio.",
   "start_url": ".",
   "display": "standalone",
   "background_color": "#F2F4F2",
   "theme_color": "#2C4653",
   "icons": [
-    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
-    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
-    { "src": "icons/nanbi-appicon-dark.svg", "sizes": "any", "type": "image/svg+xml" }
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/nanbi-appicon-windows.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
   ]
 }
