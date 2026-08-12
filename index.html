@@ -161,6 +161,36 @@ header.app button,header.app .conn{-webkit-app-region:no-drag;app-region:no-drag
 #updatebar[hidden]{display:none}
 @media(min-width:768px){ #updatebar{bottom:22px} }
 @media(prefers-reduced-motion:reduce){.spin{animation:none}}
+/* ---- Library: every SSOT page visible. Founder, 12 Aug: "I am blind on all these
+   days for the Past 7 months." Nothing in the repo may be reachable only by me. ---- */
+.tree{margin:0}
+.tdir{display:flex;align-items:center;gap:8px;padding:9px 4px;cursor:pointer;
+  border-bottom:1px solid var(--border);font-weight:600}
+.tdir .cnt{margin-left:auto;font-weight:400;font-size:12px;color:var(--muted)}
+.tfile{display:block;padding:8px 4px 8px 22px;border-bottom:1px solid var(--border);
+  cursor:pointer;font-size:14px}
+.tfile:hover{background:rgba(82,124,121,.07)}
+.tfile .p{display:block;font-size:11.5px;color:var(--muted);word-break:break-all}
+.tfile.orph .p:after{content:" · orphan";color:var(--danger)}
+.doc{font-size:15.5px;line-height:1.62;overflow-wrap:break-word}
+.doc h1{font-size:21px;margin:.2em 0 .5em}
+.doc h2{font-size:18px;margin:1.4em 0 .5em;padding-bottom:4px;border-bottom:1px solid var(--border)}
+.doc h3{font-size:16px;margin:1.2em 0 .4em}
+.doc p{margin:.7em 0}
+.doc ul,.doc ol{margin:.6em 0;padding-left:1.3em}
+.doc li{margin:.28em 0}
+.doc code{background:rgba(0,0,0,.055);padding:1px 5px;border-radius:4px;font-size:13px}
+.doc pre{background:var(--bg);border:1px solid var(--border);border-radius:8px;
+  padding:11px;overflow-x:auto;font-size:12.5px;line-height:1.45}
+.doc pre code{background:none;padding:0;font-size:inherit}
+.doc blockquote{margin:.8em 0;padding:.1em 0 .1em 13px;border-left:3px solid var(--teal);color:var(--muted)}
+.doc hr{border:none;border-top:1px solid var(--border);margin:1.5em 0}
+.doc table{border-collapse:collapse;width:100%;font-size:13.5px}
+.doc th,.doc td{border:1px solid var(--border);padding:7px 9px;text-align:left;vertical-align:top}
+.doc th{background:var(--bg);font-weight:600}
+.doc a{color:var(--teal)}
+.codechip{display:inline-block;background:rgba(82,124,121,.13);color:var(--teal);
+  border-radius:999px;padding:2px 10px;margin:2px 4px 2px 0;font-size:12px;cursor:pointer}
 </style>
 </head>
 <body>
@@ -174,6 +204,7 @@ header.app button,header.app .conn{-webkit-app-region:no-drag;app-region:no-drag
 <nav class="bottom" id="nav" hidden>
   <a href="#/"><span class="ic">◉</span>Home</a>
   <a href="#/registers"><span class="ic">§</span>Registers</a>
+  <a href="#/library"><span class="ic">▤</span>Library</a>
   <a href="#/queue"><span class="ic">≡</span>Queue</a>
   <a href="#/studio"><span class="ic">✦</span>Ask</a>
   <a href="#/settings" class="foot"><span class="av" id="avatar">R</span><span id="whoami">Account</span></a>
@@ -183,13 +214,16 @@ header.app button,header.app .conn{-webkit-app-region:no-drag;app-region:no-drag
 
 <script>
 "use strict";
+/* Shown in the footer so "am I on the new version?" is answered by looking, not by
+   asking me. Must match VERSION in sw.js — bump both together on every deploy. */
+var BUILD = "2026-08-12c";
 /* ================= state ================= */
 var S = {
   pat: localStorage.getItem("nanbi.pat") || "",
   repo: JSON.parse(localStorage.getItem("nanbi.repo") || "null") ||
         { owner:"Nanbi-ai", repo:"Nanbi-SSOT", branch:"claude/nanbi-ssot-wiki-structure-grll1f" },
   cfg:null, theme:null, statuses:null, models:null,
-  draft:null, approved:null, nnApproved:null, register:null, decisions:null,
+  draft:null, approved:null, nnApproved:null, register:null, decisions:null, graph:null,
   parseNotes:[], loaded:false, rate:null
 };
 
@@ -525,7 +559,7 @@ function diag(){
     (bad.length?' · <span style="color:var(--danger)">⚠ '+bad.join("; ")+"</span>":"")+
     (S.parseNotes.length?' · <span style="color:var(--danger)">'+S.parseNotes.length+
       ' parse note(s) — see Settings</span>':"")+
-    " · Every failure is shown, never swallowed.";
+    " · build "+BUILD+" · Every failure is shown, never swallowed.";
 }
 
 /* ================= auth screen ================= */
@@ -579,6 +613,9 @@ function route(){
   if ((m=h.match(/^#\/ratify\/([A-F]\d{1,2})$/))) return vTopic(m[1]);
   if ((m=h.match(/^#\/registers(?:\/(nn|wp|vg|const))?(?:\?(?:q=([^&]*))?&?(?:only=1)?)?$/)))
     return vRegisters(m[1]||"const", m[2]?decodeURIComponent(m[2]):"");
+  if ((m=h.match(/^#\/library(?:\?q=([^&]*))?$/))) return vLibrary(m[1]?decodeURIComponent(m[1]):"");
+  if ((m=h.match(/^#\/doc\/(.+)$/))) return vDoc(decodeURIComponent(m[1]));
+  if ((m=h.match(/^#\/code\/(.+)$/))) return vCode(decodeURIComponent(m[1]));
   if (h==="#/queue") return vStub("Task Queue","Arrives at milestone M4 — priority numbers, drag-drop reorder, RETURN-TO, the 10 locked colours.");
   if (h==="#/studio") return vStudio();
   if ((m=h.match(/^#\/studio\/run\/(.+)$/))) return vResults(decodeURIComponent(m[1]));
@@ -1189,6 +1226,187 @@ function loadRuns(){
     });
     el.innerHTML=h+'</table></div>';
   }, function(){ el.innerHTML='<div class="empty">No runs manifest yet — it appears with the first run.</div>'; });
+}
+
+/* ================= Library =================
+   Every governed page in the SSOT, visible. The founder's charge, 12 Aug 2026:
+   "I want All the SSOT/Wiki Pages to be visible to me in the Studio... I am blind
+   on all these days for the Past 7 months."  Nothing here is a new store: the repo
+   is the store, this is the window. raw/ and derived/ are excluded by default —
+   4,283 evidence files would bury the ~200 documents anyone actually wrote — but
+   the toggle shows them, because "excluded by default" must never mean "hidden". */
+
+function mdBlock(src){
+  // Block-level markdown. Written out rather than vendored: the wiki is mostly
+  // TABLES (the founder's standing ruling — tables over prose), and a renderer that
+  // drops tables would show him less than the raw file does.
+  var lines=String(src).replace(/\r\n?/g,"\n").split("\n"), out=[], i=0;
+  function inline(s){
+    return esc(s)
+      .replace(/`([^`]+)`/g,'<code>$1</code>')
+      .replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>')
+      .replace(/(^|[\s(])\*([^*\n]+)\*/g,'$1<i>$2</i>')
+      .replace(/\[([^\]]+)\]\(([^)]+)\)/g,function(_,t,h){
+        if(/^https?:/.test(h)) return '<a href="'+esc(h)+'" target="_blank" rel="noopener">'+t+'</a>';
+        var p=h.split("#")[0]; if(!p) return t;
+        return '<a href="#/doc/'+encodeURIComponent(docResolve(p))+'">'+t+'</a>';
+      });
+  }
+  function cells(row){
+    var r=row.trim().replace(/^\|/,"").replace(/\|$/,"");
+    return r.split("|").map(function(c){return c.trim();});
+  }
+  while(i<lines.length){
+    var L=lines[i];
+    if(/^```/.test(L)){                                   // fenced code
+      var buf=[]; i++;
+      while(i<lines.length && !/^```/.test(lines[i])) buf.push(lines[i++]);
+      i++; out.push("<pre><code>"+esc(buf.join("\n"))+"</code></pre>"); continue;
+    }
+    if(/^\s*\|.*\|\s*$/.test(L) && i+1<lines.length && /^\s*\|[\s:|-]+\|\s*$/.test(lines[i+1])){
+      var head=cells(L); i+=2; var rows=[];
+      while(i<lines.length && /^\s*\|/.test(lines[i])) rows.push(cells(lines[i++]));
+      out.push('<div class="tablewrap"><table><tr>'+
+        head.map(function(c){return "<th>"+inline(c)+"</th>";}).join("")+"</tr>"+
+        rows.map(function(r){return "<tr>"+r.map(function(c){return "<td>"+inline(c)+"</td>";}).join("")+"</tr>";}).join("")+
+        "</table></div>"); continue;
+    }
+    var hm=L.match(/^(#{1,6})\s+(.*)$/);
+    if(hm){ var lv=Math.min(hm[1].length,4); out.push("<h"+lv+">"+inline(hm[2])+"</h"+lv+">"); i++; continue; }
+    if(/^\s*([-*_])\s*\1\s*\1[\s-*_]*$/.test(L)){ out.push("<hr>"); i++; continue; }
+    if(/^\s*>/.test(L)){
+      var q=[]; while(i<lines.length && /^\s*>/.test(lines[i])) q.push(lines[i++].replace(/^\s*>\s?/,""));
+      out.push("<blockquote>"+mdBlock(q.join("\n"))+"</blockquote>"); continue;
+    }
+    if(/^\s*([-*+]|\d+[.)])\s+/.test(L)){
+      var ord=/^\s*\d/.test(L), items=[];
+      while(i<lines.length && /^\s*([-*+]|\d+[.)])\s+/.test(lines[i]))
+        items.push(lines[i++].replace(/^\s*([-*+]|\d+[.)])\s+/,""));
+      out.push("<"+(ord?"ol":"ul")+">"+items.map(function(t){return "<li>"+inline(t)+"</li>";}).join("")+
+               "</"+(ord?"ol":"ul")+">"); continue;
+    }
+    if(!L.trim()){ i++; continue; }
+    var para=[]; while(i<lines.length && lines[i].trim() && !/^(\s*[|>#`]|\s*([-*+]|\d+[.)])\s)/.test(lines[i])) para.push(lines[i++]);
+    if(para.length) out.push("<p>"+inline(para.join(" "))+"</p>"); else i++;
+  }
+  return out.join("");
+}
+function docResolve(p){ // best-effort: match a graph node by suffix
+  p=p.replace(/^\.\//,"");
+  if(!S.graph) return p;
+  var hit=S.graph.nodes.filter(function(n){ return n.path===p || n.path.endsWith("/"+p); });
+  return hit.length?hit[0].path:p;
+}
+function loadGraph(){
+  if(S.graph) return Promise.resolve(S.graph);
+  return readFile("webapp/data/linkgraph.json").then(function(f){
+    S.graph=JSON.parse(f.text); return S.graph;
+  }).catch(function(e){
+    S.graph={nodes:[],edges:[],codes:{},counts:{},_err:String(e.message||e)};
+    return S.graph;
+  });
+}
+function vLibrary(q){
+  setCrumb("Library","every page in the SSOT — nothing reachable only by Claude");
+  render('<div class="card"><span class="spin"></span> Reading the repository…</div>');
+  loadGraph().then(function(g){
+    if(g._err) return render('<div class="card"><div class="err">linkgraph.json could not be read — '+
+      esc(g._err)+'. It is built by .github/scripts/build_linkgraph.py.</div></div>');
+    var c=g.counts||{};
+    var ql=(q||"").toLowerCase();
+    var hits=g.nodes.filter(function(n){
+      return !ql || n.path.toLowerCase().indexOf(ql)>=0 || (n.title||"").toLowerCase().indexOf(ql)>=0
+        || (n.codes||[]).some(function(x){return x.toLowerCase().indexOf(ql)>=0;});
+    });
+    var inbound={};
+    g.edges.forEach(function(e){ if(e.kind==="link") inbound[e.to]=(inbound[e.to]||0)+1; });
+    var dirs={};
+    hits.forEach(function(n){ (dirs[n.dir]=dirs[n.dir]||[]).push(n); });
+    var h='<div class="card"><div class="kpis">'+
+      '<div class="kpi"><div class="n">'+(c.nodes||0)+'</div><div class="k">Documents</div></div>'+
+      '<div class="kpi"><div class="n">'+(c.edges||0)+'</div><div class="k">Links</div></div>'+
+      '<div class="kpi"><div class="n">'+(c.codes||0)+'</div><div class="k">Rule codes</div></div>'+
+      '<div class="kpi"><div class="n" style="color:var(--danger)">'+(c.orphans||0)+'</div>'+
+      '<div class="k">Orphans</div></div></div>'+
+      '<p class="small"><b>Orphan</b> = nothing links to it and it links to nothing. '+
+      (c.nodes?Math.round((c.orphans||0)/c.nodes*100):0)+'% of this repository is orphaned — '+
+      'that is the pile-up, measured, not described. <code>raw/</code> (4,283 evidence files) and '+
+      '<code>derived/</code> are excluded here by design.</p>'+
+      '<input id="lq" placeholder="Filter by path, title or rule code…" value="'+esc(q||"")+'" '+
+      'oninput="clearTimeout(window._lqt);window._lqt=setTimeout(function(){'+
+      'location.hash=\'#/library\'+(this.value?\'?q=\'+encodeURIComponent(this.value):\'\');'+
+      '}.bind(this),260)"></div>';
+    if(!hits.length) h+='<div class="card"><div class="empty">Nothing matches “'+esc(q)+'”.</div></div>';
+    Object.keys(dirs).sort().forEach(function(d){
+      var fs=dirs[d].sort(function(a,b){return a.path<b.path?-1:1;});
+      h+='<div class="card"><div class="tdir" onclick="this.nextElementSibling.hidden=!this.nextElementSibling.hidden">'+
+         '<span>▸ '+esc(d)+'</span><span class="cnt">'+fs.length+'</span></div><div'+(q?"":" hidden")+'>';
+      fs.forEach(function(n){
+        var orph=!inbound[n.path] && !g.edges.some(function(e){return e.from===n.path&&e.kind==="link";});
+        h+='<div class="tfile'+(orph?" orph":"")+'" onclick="location.hash=\'#/doc/'+
+           encodeURIComponent(n.path)+'\'"><b>'+esc(n.title||n.path)+'</b>'+
+           '<span class="p">'+esc(n.path)+' · '+Math.round(n.bytes/1024)+' KB'+
+           (inbound[n.path]?' · '+inbound[n.path]+' inbound':'')+'</span></div>';
+      });
+      h+='</div></div>';
+    });
+    render(h);
+  });
+}
+function vDoc(path){
+  setCrumb(path.split("/").pop(),path);
+  render('<div class="card"><span class="spin"></span> Loading '+esc(path)+'…</div>');
+  Promise.all([loadGraph(),readFile(path)]).then(function(r){
+    var g=r[0], f=r[1], node=(g.nodes||[]).filter(function(n){return n.path===path;})[0]||{};
+    var outb=g.edges.filter(function(e){return e.from===path&&e.kind==="link";});
+    var inb =g.edges.filter(function(e){return e.to===path&&e.kind==="link";});
+    var body;
+    if(/\.md$/i.test(path))            body='<div class="doc">'+mdBlock(f.text)+'</div>';
+    else if(/\.json$/i.test(path)){
+      var pretty; try{ pretty=JSON.stringify(JSON.parse(f.text),null,2); }catch(e){ pretty=f.text; }
+      body='<pre><code>'+esc(pretty)+'</code></pre>';
+    } else body='<pre><code>'+esc(f.text)+'</code></pre>';
+    var h='<div class="card"><button class="quiet" onclick="location.hash=\'#/library\'">← Library</button>'+
+      '<div class="small" style="margin-top:6px">'+esc(path)+' · '+Math.round(f.text.length/1024)+' KB · '+
+      '<a href="https://github.com/'+esc(S.repo.owner)+'/'+esc(S.repo.repo)+'/blob/'+
+      esc(S.repo.branch)+'/'+esc(path)+'" target="_blank" rel="noopener">on GitHub</a></div></div>'+
+      '<div class="card">'+body+'</div>';
+    if((node.codes||[]).length){
+      h+='<div class="card"><h2>Rules this page touches</h2>'+
+        node.codes.map(function(c){ return '<span class="codechip" onclick="location.hash=\'#/code/'+
+          encodeURIComponent(c)+'\'">'+esc(c)+'</span>'; }).join("")+'</div>';
+    }
+    h+='<div class="card"><h2>Graph</h2>'+
+      '<p class="small">Computed by <code>.github/scripts/build_linkgraph.py</code>. '+
+      'No graph database — <b>ADR-009</b>.</p>'+
+      '<h3>Links out ('+outb.length+')</h3>'+(outb.length?
+        outb.map(function(e){return '<div class="tfile" onclick="location.hash=\'#/doc/'+
+          encodeURIComponent(e.to)+'\'">'+esc(e.to)+'</div>';}).join(""):
+        '<div class="empty">This page cites nothing.</div>')+
+      '<h3>Linked from ('+inb.length+')</h3>'+(inb.length?
+        inb.map(function(e){return '<div class="tfile" onclick="location.hash=\'#/doc/'+
+          encodeURIComponent(e.from)+'\'">'+esc(e.from)+'</div>';}).join(""):
+        '<div class="empty">Nothing in the repository points here. It is an orphan.</div>')+
+      '</div>';
+    render(h);
+  }).catch(function(e){
+    render('<div class="card"><div class="err">Could not read '+esc(path)+' — '+esc(e.message||e)+'</div></div>');
+  });
+}
+function vCode(code){
+  setCrumb(code,"every page that mentions this rule");
+  loadGraph().then(function(g){
+    var rec=(g.codes||{})[code];
+    if(!rec) return render('<div class="card"><div class="empty">No page mentions '+esc(code)+'.</div></div>');
+    var h='<div class="card"><button class="quiet" onclick="location.hash=\'#/library\'">← Library</button>'+
+      '<h2>'+esc(code)+'</h2><p class="small">Defined in: '+
+      (rec.defined_in?'<a href="#/doc/'+encodeURIComponent(rec.defined_in)+'">'+esc(rec.defined_in)+'</a>':
+       '<b style="color:var(--danger)">nowhere — this code is cited but never defined</b>')+'</p></div>'+
+      '<div class="card"><h2>Mentioned in '+rec.mentioned_in.length+' page(s)</h2>'+
+      rec.mentioned_in.map(function(p){return '<div class="tfile" onclick="location.hash=\'#/doc/'+
+        encodeURIComponent(p)+'\'">'+esc(p)+'</div>';}).join("")+'</div>';
+    render(h);
+  });
 }
 
 function vSettings(){
